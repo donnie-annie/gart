@@ -1,21 +1,40 @@
 # GART Routing Suite
 
 Paper-aligned implementation of **GART: Decentralized Intelligent Routing with
-Dual Rewards for Mission-Critical Industrial IoT Networks**. GART is the primary
-routing implementation in this repository; the historical DRL-OR-S code is
-isolated under `baseline/drl-or-s/` for comparison and compatibility only.
+Dual Rewards for Mission-Critical Industrial IoT Networks**. GART is the main
+implementation. The historical DRL-OR-S project and its 47-node Military
+scenario are isolated under `baseline/drl-or-s/`.
+
+## Paper topology set
+
+| Dataset | Nodes | Physical links | Directed links | Paper use |
+|---|---:|---:|---:|---|
+| `nsfnet` | 14 | 21 | 42 | convergence and static evaluation |
+| `geant2` | 23 | 36 | 72 | convergence and static evaluation |
+| `renater2010` | 43 | 56 | 112 | static and Renater-like dynamic evaluation |
+| `synthetic300` | 300 | 669 | 1,338 | large-scale evaluation |
+
+Every physical link in `Topology.txt` is loaded in both directions. The
+Synthetic-300 fixture uses a fixed degree-preferential generator seed and has
+average out-degree 4.46. Dataset provenance and known reproduction boundaries
+are recorded in each `topology/<dataset>/metadata.json`.
+
+The paper does not publish its generated Synthetic-300 instance. It also
+reports 36 physical GEANT2 links while the public 23-node traffic-measurement
+snapshot contains 37. To match the paper count, this repository excludes the
+snapshot's lowest-capacity non-bridge link `(6, 19)` and records that decision
+in metadata.
 
 ## Project layout
 
 | Path | Purpose |
 |---|---|
-| `gart/` | GART observations, dual rewards, GAT Actor-Critic, PPO trainer and online path service |
-| `topology/Military/` | Shared 47-node topology and traffic matrix |
-| `models/GART_Military/` | Output directory for trained `gart.pt` checkpoints |
-| `baseline/drl-or-s/` | Legacy implementation and its packaged checkpoints |
-| `controller.py`, `server_agent.py` | Ryu/controller integration and routing API |
-| `testbed/` | Military Mininet topology and hybrid physical attachment |
-| `tests/` | Unit and integration tests |
+| `gart/` | GART observation, dual reward, GAT Actor-Critic, PPO and path service |
+| `topology/` | The four paper evaluation topologies and runnable traffic fixtures |
+| `models/` | Per-topology GART checkpoint output |
+| `testbed/paper_topology.py` | Generic Mininet launcher for any paper topology |
+| `baseline/drl-or-s/` | Legacy DRL-OR-S code, Military topology and checkpoints |
+| `tests/` | Unit, integration and paper-alignment tests |
 
 ## Install
 
@@ -23,28 +42,30 @@ isolated under `baseline/drl-or-s/` for comparison and compatibility only.
 pip3 install -r requirements.txt
 ```
 
-Mininet and Open vSwitch must be installed as system packages in the Linux
-testbed environment.
+Mininet and Open vSwitch must be installed as system packages on the Linux
+testbed.
 
 ## Train GART
 
-The defaults match Tables II-III of the paper: 100,000 interactions, two GAT
-layers, four 16-dimensional heads, PPO clip 0.1, rollout length 2048,
-mini-batch size 64 and ten PPO epochs.
+NSFNet is the default dataset:
 
 ```bash
 python3 -m gart.train \
-  --topology topology/Military/Topology.txt \
-  --traffic-matrix topology/Military/TM.txt \
+  --dataset nsfnet \
   --traffic-intensity 0.7 \
   --interactions 100000 \
-  --seed 1 \
-  --output models/GART_Military/gart.pt
+  --seed 1
 ```
 
-Run seeds 1-5 independently to reproduce the paper's five-run averages. Reward
-coefficients that are symbolic but not numerically specified in the manuscript
-are explicit in `gart/config.py`.
+The checkpoint is written to `models/nsfnet/gart.pt`. Select `geant2`,
+`renater2010`, or `synthetic300` with `--dataset`; the topology, traffic matrix,
+and output path follow automatically. Use seeds 1-5 and traffic intensities 0.3
+and 0.7 for the paper's five-run light/heavy-load setup.
+
+The bundled NSFNet and GEANT2 `TM.txt` files are deterministic runnable
+fixtures. Exact traffic-matrix reproduction requires replacing them with a
+matrix extracted from the large dataset archives cited by the paper. Renater
+2010 and Synthetic-300 use gravity-model fixtures as described in the paper.
 
 ## Run
 
@@ -52,47 +73,22 @@ are explicit in `gart/config.py`.
 ./start_suite.sh
 ```
 
-The launcher uses GART by default and reads
-`models/GART_Military/gart.pt`. If the checkpoint is missing or inference is
-unavailable, routing safely falls back to Dijkstra.
-
-Useful endpoints:
-
-- controller/server socket: `6001`
-- Web UI: `http://localhost:6009`
-- GART path service: `127.0.0.1:8889`
-
-For hybrid virtual/physical switch communication:
+This starts NSFNet by default. Choose another paper topology with:
 
 ```bash
-./start_suite.sh eno1
+GART_TOPOLOGY=renater2010 ./start_suite.sh
 ```
 
-This attaches `eno1` to Mininet `s1:port20`. Runtime settings can be overridden
-with environment variables:
-
-```bash
-PATH_SERVICE_PYTHON=/path/to/python \
-PATH_SERVICE_MODEL=models/GART_Military/gart.pt \
-SERVER_AGENT_ROUTE_MODE=shadow \
-./start_suite.sh eno1
-```
-
-Stop all components with:
-
-```bash
-./stop_suite.sh
-```
+The corresponding default checkpoint is `models/<topology>/gart.pt`. If it is
+missing, the path service reports the reason and falls back to Dijkstra.
 
 ## Baseline comparison
 
-The legacy implementation is not part of the primary GART package. Select it
-explicitly when a comparison run is required:
+The Military scenario is available only for explicit DRL-OR-S baseline runs:
 
 ```bash
 python3 -m gart.path_service \
   --topo Military \
-  --port 8889 \
   --algorithm baseline \
   --model baseline/drl-or-s/model/Military_mininet
 ```
@@ -101,7 +97,8 @@ python3 -m gart.path_service \
 
 ```bash
 python3 -m pytest -q
+python3 tools/build_paper_topologies.py
+git diff --exit-code -- topology
 ```
 
-Chinese deployment and troubleshooting instructions are in
-`RUN_TESTING_CN.md`.
+Chinese deployment notes are in `RUN_TESTING_CN.md`.

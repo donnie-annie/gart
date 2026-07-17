@@ -1,162 +1,128 @@
-# GART Routing Suite 运行与测试说明
+# GART 运行与复现实验说明
 
-本文档说明 GART 主实现的训练、启动、测试和常见排障方式。旧 DRL-OR-S
-实现只作为比较基线保存在 `baseline/drl-or-s/`，不会出现在主代码路径中。
+项目主拓扑已经按论文改为 NSFNet、GEANT2、Renater 2010 和
+Synthetic-300。原来的 Military 47 节点拓扑只保留在
+`baseline/drl-or-s/`，不会再作为 GART 默认实验。
 
-## 1. 目录结构
+## 1. 论文拓扑
+
+| 数据集 | 节点 | 物理链路 | 有向链路 |
+|---|---:|---:|---:|
+| NSFNet | 14 | 21 | 42 |
+| GEANT2 | 23 | 36 | 72 |
+| Renater 2010 | 43 | 56 | 112 |
+| Synthetic-300 | 300 | 669 | 1,338 |
+
+目录如下：
 
 ```text
-gart/
-├── gart/                         # GART 主实现和路径服务
-├── topology/Military/            # 47 节点拓扑与流量矩阵
-├── models/GART_Military/         # GART checkpoint 输出目录
-├── baseline/drl-or-s/            # 旧算法、环境和模型权重
-├── controller.py                 # Ryu 控制器应用
-├── server_agent.py               # 根控制器服务与 Web/API
-├── start_suite.sh                # 一键启动脚本
-└── tests/                        # 自动化测试
+topology/
+├── nsfnet/
+├── geant2/
+├── renater2010/
+└── synthetic300/
 ```
 
-## 2. 环境准备
+每个目录包含：
 
-建议使用 Linux/Ubuntu 测试环境。安装 Python 依赖：
+- `Topology.txt`：物理链路，每条链路由加载器转换为两个方向；
+- `TM.txt`：可直接运行的流量矩阵；
+- `metadata.json`：数据来源、论文计数和复现边界。
+
+论文没有公开 Synthetic-300 的具体随机实例与种子，因此仓库提供固定种子、
+精确满足 300 节点和 1,338 条有向链路的可重生成实例。公开的 23 节点
+GEANT2 测量快照有 37 条物理链路，而论文写 36 条；仓库去掉最低容量、非桥接
+的 `(6, 19)` 链路以严格匹配论文计数，并在元数据中记录该处理。
+
+## 2. 安装
 
 ```bash
-cd gart
 pip3 install -r requirements.txt
 ```
 
-Mininet、Open vSwitch 与系统网络工具需要通过系统包管理器安装。验证关键
-Python 依赖：
+完整仿真还需要在 Linux 中安装 Mininet 和 Open vSwitch。
 
-```bash
-python3 - <<'PY'
-import flask, networkx, numpy, torch
-print("Python dependencies OK")
-PY
-```
+## 3. 训练
 
-## 3. 训练 GART
+默认训练 NSFNet：
 
 ```bash
 python3 -m gart.train \
-  --topology topology/Military/Topology.txt \
-  --traffic-matrix topology/Military/TM.txt \
+  --dataset nsfnet \
   --traffic-intensity 0.7 \
   --interactions 100000 \
-  --seed 1 \
-  --output models/GART_Military/gart.pt
+  --seed 1
 ```
 
-论文报告五次独立运行的平均值，因此复现实验时应分别使用种子 1 至 5。
+输出为 `models/nsfnet/gart.pt`。其他数据集只需修改 `--dataset`：
 
-## 4. 启动完整系统
+```bash
+python3 -m gart.train --dataset geant2 --traffic-intensity 0.3 --seed 1
+python3 -m gart.train --dataset renater2010 --traffic-intensity 0.7 --seed 1
+python3 -m gart.train --dataset synthetic300 --traffic-intensity 0.7 --seed 1
+```
+
+论文中每组实验使用种子 1-5 独立运行，并分别测试 0.3 轻负载和 0.7 重负载。
+NSFNet/GEANT2 的仓库内 `TM.txt` 是可运行的确定性流量夹具；若要精确复现论文
+流量，应从论文引用的大型官方数据包中抽取对应矩阵后替换。Renater 和
+Synthetic-300 使用论文所述的 gravity 模型夹具。
+
+## 4. 启动 Mininet 与服务
 
 ```bash
 ./start_suite.sh
 ```
 
-脚本依次启动：
-
-1. `python3 -m gart.path_service`，端口 `8889`；
-2. `server_agent.py`，服务端口 `6001`、Web 端口 `6009`；
-3. Military 拓扑对应的 Ryu 控制器；
-4. Military Mininet 拓扑和当前终端中的 Mininet CLI。
-
-默认模型为 `models/GART_Military/gart.pt`。checkpoint 不存在或推理失败时，
-服务会返回带原因字段的 Dijkstra 回退结果。
-
-可覆盖运行参数：
+默认启动 NSFNet。切换拓扑：
 
 ```bash
-PATH_SERVICE_PYTHON=/path/to/python \
-PATH_SERVICE_MODEL=models/GART_Military/gart.pt \
-ROUTING_ALGORITHM=gart \
-SERVER_AGENT_ROUTE_MODE=hybrid \
-./start_suite.sh
+GART_TOPOLOGY=geant2 ./start_suite.sh
+GART_TOPOLOGY=renater2010 ./start_suite.sh
 ```
 
-## 5. 混合物理交换机模式
+默认模型路径自动变为 `models/<拓扑名>/gart.pt`。模型不存在时，路径服务会
+带原因回退到 Dijkstra。
+
+物理网卡混合模式：
 
 ```bash
-./start_suite.sh eno1
+GART_TOPOLOGY=nsfnet ./start_suite.sh eno1
 ```
 
-该命令把 `eno1` 接入 `s1:port20`，并设置默认外部链路白名单
-`EXTERNAL_LINK_PORTS=1:20`。如需自定义：
-
-```bash
-EXTERNAL_LINK_PORTS=1:20 ./start_suite.sh eno1
-```
-
-## 6. 单独启动路径服务
-
-GART：
+## 5. 单独启动路径服务
 
 ```bash
 python3 -m gart.path_service \
-  --topo Military \
-  --port 8889 \
+  --topo nsfnet \
   --algorithm gart \
-  --model models/GART_Military/gart.pt
+  --model models/nsfnet/gart.pt
 ```
 
-比较旧基线时必须显式选择：
+旧 DRL-OR-S/Military 只在 baseline 模式使用：
 
 ```bash
 python3 -m gart.path_service \
   --topo Military \
-  --port 8889 \
   --algorithm baseline \
   --model baseline/drl-or-s/model/Military_mininet
 ```
 
-## 7. 自动化测试
-
-运行全部测试：
+## 6. 验证
 
 ```bash
 python3 -m pytest -q
+python3 tools/build_paper_topologies.py
+git diff --exit-code -- topology
 ```
 
-仅运行 GART 论文对齐与路径服务测试：
+拓扑测试会检查节点连续性、连通性、无重复链路、流量矩阵尺寸以及论文中的
+四组节点/链路计数。
 
-```bash
-python3 -m pytest -q \
-  tests/test_gart_paper_alignment.py \
-  tests/test_gart_path_service_integration.py
-```
-
-## 8. 运行状态检查
-
-```bash
-cat logs/path_service.log
-cat logs/server_agent.stdout.log
-cat logs/controllers.log
-curl http://127.0.0.1:6009/api/graph
-```
-
-检查端口：
-
-```bash
-ss -lntp | grep -E '6001|6009|8889'
-```
-
-## 9. 停止系统
+## 7. 停止与日志
 
 ```bash
 ./stop_suite.sh
+cat logs/path_service.log
+cat logs/server_agent.stdout.log
+cat logs/controllers.log
 ```
-
-如进程异常退出，可检查 `logs/*.pid` 和对应日志后再次运行停止脚本。
-
-## 10. 常见问题
-
-- **找不到 `gart.pt`**：先执行训练命令，或通过 `PATH_SERVICE_MODEL` 指向
-  已训练 checkpoint。
-- **缺少 PyTorch/PyG**：重新安装 `requirements.txt`，并确认当前启动脚本
-  使用的 Python 与安装依赖的 Python 相同。
-- **Mininet 权限错误**：从具备 sudo 权限的 Linux 终端启动。
-- **路径服务返回 Dijkstra**：查看响应的 `fallback_reason` 与
-  `logs/path_service.log`，确认 checkpoint、拓扑和动态链路特征是否完整。
-- **端口被占用**：先运行 `./stop_suite.sh`，再检查是否有遗留进程。

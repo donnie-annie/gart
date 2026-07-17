@@ -9,3 +9,4 @@ venv/
 env/
 .idea/
 .vscode/
+models/*/gart.pt

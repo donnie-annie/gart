@@ -32,6 +32,10 @@ propagates its effect to earlier per-hop decisions, matching the manuscript.
 
 ## Reproduction notes
 
+- Static topology counts match the paper: NSFNet 14/42, GEANT2 23/72,
+  Renater 2010 43/112 and Synthetic-300 300/1,338 (nodes/directed links).
+- `topologies.py` is the canonical dataset catalog. `--dataset nsfnet` is the
+  default training configuration.
 - Flow classes follow Table II: EU 5%/20 ms, MU 15%/50 ms, LU 70%/100 ms,
   and RT 10%/200 ms.
 - `GARTConfig` contains every Table III value.

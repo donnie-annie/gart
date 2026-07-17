@@ -2,7 +2,7 @@
 
 Run the primary implementation from the repository root with::
 
-    python3 -m gart.path_service --topo Military --port 8889
+    python3 -m gart.path_service --topo nsfnet --port 8889
 
 The historical DRL-OR-S runtime is imported only when ``--algorithm baseline``
 is selected. Missing models always fall back to topology-aware Dijkstra.
@@ -39,7 +39,7 @@ PROJECT_ROOT = os.path.dirname(SERVICE_DIR)
 BASELINE_DIR = os.path.join(PROJECT_ROOT, "baseline", "drl-or-s")
 TOPOLOGY_ROOT = os.path.join(PROJECT_ROOT, "topology")
 DEFAULT_GART_MODEL = os.path.join(
-    PROJECT_ROOT, "models", "GART_Military", "gart.pt")
+    PROJECT_ROOT, "models", "nsfnet", "gart.pt")
 DEFAULT_BASELINE_MODEL = os.path.join(
     BASELINE_DIR, "model", "Military_mininet")
 
@@ -52,11 +52,12 @@ sys.path.insert(0, PROJECT_ROOT)
 sys.path.insert(0, BASELINE_DIR)
 
 
-def _resolve_service_path(path, algorithm="gart"):
+def _resolve_service_path(path, algorithm="gart", topo_name="nsfnet"):
     if not path:
         if algorithm in {"baseline", "drl-or-s"}:
             return DEFAULT_BASELINE_MODEL
-        return DEFAULT_GART_MODEL
+        return os.path.join(
+            PROJECT_ROOT, "models", str(topo_name).lower(), "gart.pt")
     if os.path.isabs(path):
         return path
     return os.path.join(PROJECT_ROOT, path)
@@ -232,7 +233,7 @@ class GARTPathService(object):
     - 混合场景（路径跨越 DRL 范围内外）：整体走 Dijkstra
     """
 
-    def __init__(self, topo_name="Military", port=8889, model_path=None,
+    def __init__(self, topo_name="nsfnet", port=8889, model_path=None,
                  algorithm="gart"):
         self.port = port
         self.topo_name = topo_name
@@ -244,7 +245,7 @@ class GARTPathService(object):
         if self.algorithm_requested == "drl-or-s":
             self.algorithm_requested = "baseline"
         self.model_path = _resolve_service_path(
-            model_path, self.algorithm_requested)
+            model_path, self.algorithm_requested, topo_name)
 
         print("[初始化] 拓扑: %s, 端口: %d, 算法: %s"
               % (topo_name, port, self.algorithm_requested))
@@ -278,8 +279,9 @@ class GARTPathService(object):
             }
             self.num_node = len(node_ids)
 
-        # Keep the legacy NetEnv available for old checkpoints and fallback.
-        if NetEnv is not None and Policy is not None and Data is not None:
+        # The legacy NetEnv belongs only to explicit baseline runs.
+        if (self.algorithm_requested == "baseline" and NetEnv is not None
+                and Policy is not None and Data is not None):
             print("[初始化] 正在创建兼容 NetEnv...")
             args = argparse.Namespace()
             args.use_mininet = False
@@ -898,13 +900,13 @@ DRLPathService = GARTPathService
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="GART 路径计算服务")
-    parser.add_argument("--topo", default="Military", help="拓扑名称")
+    parser.add_argument("--topo", default="nsfnet", help="拓扑名称")
     parser.add_argument("--port", type=int, default=8889, help="监听端口")
     parser.add_argument(
         "--model",
         default=None,
         help=("模型或 checkpoint 路径。相对路径按项目根目录解析；"
-              "GART 默认使用 models/GART_Military/gart.pt"),
+              "GART 默认使用 models/nsfnet/gart.pt"),
     )
     parser.add_argument(
         "--algorithm",

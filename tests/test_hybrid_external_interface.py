@@ -72,8 +72,8 @@ def test_restore_network_config_deletes_port_and_restores_ip_and_gateway():
     assert ["ip", "route", "replace", "default", "via", "192.0.2.1", "dev", "eno1"] in commands
 
 
-def test_military_topology_accepts_optional_external_interface_argument():
-    text = (ROOT / "testbed" / "creat_test_topo.py").read_text(encoding="utf-8")
+def test_paper_topology_accepts_optional_external_interface_argument():
+    text = (ROOT / "testbed" / "paper_topology.py").read_text(encoding="utf-8")
 
     assert "external_intf" in text
     assert "add_hardware_interface" in text
