@@ -1,6 +1,6 @@
 # Military topology (legacy baseline only)
 
-This 47-node, 60-link scenario belongs to the historical DRL-OR-S project. It
+This 47-node, 61-link scenario belongs to the historical DRL-OR-S project. It
 is retained only for baseline compatibility and is not a GART paper topology.
 
 - `Topology.txt`: legacy physical-link structure
