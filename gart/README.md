@@ -1,8 +1,9 @@
 # GART paper alignment
 
 This package implements **GART: Decentralized Intelligent Routing with Dual
-Rewards for Mission-Critical Industrial IoT Networks** while keeping the old
-DRL-OR-S model available as a deployment fallback.
+Rewards for Mission-Critical Industrial IoT Networks**. The old implementation
+is isolated under `baseline/drl-or-s/` and is loaded only when baseline mode is
+selected explicitly.
 
 ## Paper-to-code map
 
@@ -19,7 +20,7 @@ DRL-OR-S model available as a deployment fallback.
 | PPO loss, Eqs. (12)-(15) | `ppo.py` |
 | Multi-agent/per-flow training loop, Algorithm 2 | `train.py` |
 | Dynamic topology training backend | `topology_env.py` |
-| Decentralized online next-hop execution | `../path_service.py` |
+| Decentralized online next-hop execution | `path_service.py` |
 
 The model uses two GAT layers. Each layer has four attention heads with a
 16-dimensional output per head. Actor and Critic MLPs both use hidden widths

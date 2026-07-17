@@ -629,7 +629,8 @@ class NetEnv():
     '''
     def _load_topology(self, toponame):
         package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        topo_dir = os.path.join(package_root, "topology", toponame)
+        project_root = os.path.dirname(os.path.dirname(package_root))
+        topo_dir = os.path.join(project_root, "topology", toponame)
         topofile = open(os.path.join(topo_dir, "Topology.txt"), "r")
         demandfile = open(os.path.join(topo_dir, "TM.txt"), "r")
         self._demand_matrix = list(map(int, demandfile.readline().split()))

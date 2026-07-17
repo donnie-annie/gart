@@ -6,9 +6,8 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DRL_ROOT = ROOT / "drl-or-s"
-if str(DRL_ROOT) not in sys.path:
-    sys.path.insert(0, str(DRL_ROOT))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from gart.config import GARTConfig, PAPER_FLOW_PROFILES
 from gart.observation import build_gart_observation

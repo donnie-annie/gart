@@ -1,10 +1,10 @@
 """CPU-first PPO training entry point for GART.
 
-Run from ``drl-or-s``:
+Run from the repository root:
 
     python3 -m gart.train --topology topology/Military/Topology.txt \
         --traffic-matrix topology/Military/TM.txt \
-        --output model/GART_Military/gart.pt
+        --output models/GART_Military/gart.pt
 """
 
 import argparse
@@ -26,7 +26,7 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Train the paper-aligned GART policy")
     parser.add_argument("--topology", default="topology/Military/Topology.txt")
     parser.add_argument("--traffic-matrix", default="topology/Military/TM.txt")
-    parser.add_argument("--output", default="model/GART_Military/gart.pt")
+    parser.add_argument("--output", default="models/GART_Military/gart.pt")
     parser.add_argument("--interactions", type=int, default=100000,
                         help="paper evaluation budget (default: 100000)")
     parser.add_argument("--traffic-intensity", type=float, choices=(0.3, 0.7), default=0.7)

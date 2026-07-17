@@ -32,7 +32,7 @@ def test_cross_domain_ip_packets_request_root_path_when_destination_not_local():
 
 def test_drl_request_boundaries_are_logged():
     server_text = (ROOT / "server_agent.py").read_text(encoding="utf-8")
-    path_service_text = (ROOT / "drl-or-s" / "path_service.py").read_text(encoding="utf-8")
+    path_service_text = (ROOT / "gart" / "path_service.py").read_text(encoding="utf-8")
     controller_text = (ROOT / "controller.py").read_text(encoding="utf-8")
 
     assert "[PathRequest] send_to_root" in controller_text

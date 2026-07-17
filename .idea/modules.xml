@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/drl-or-s-routing-suite.iml" filepath="$PROJECT_DIR$/.idea/drl-or-s-routing-suite.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/gart.iml" filepath="$PROJECT_DIR$/.idea/gart.iml" />
     </modules>
   </component>
 </project>

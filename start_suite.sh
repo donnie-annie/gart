@@ -6,8 +6,8 @@ mkdir -p logs
 EXTERNAL_INTF="${1:-}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 SERVER_AGENT_ROUTE_MODE="${SERVER_AGENT_ROUTE_MODE:-hybrid}"
-ROUTING_ALGORITHM="${ROUTING_ALGORITHM:-auto}"
-PATH_SERVICE_MODEL="${PATH_SERVICE_MODEL:-model/Military_mininet}"
+ROUTING_ALGORITHM="${ROUTING_ALGORITHM:-gart}"
+PATH_SERVICE_MODEL="${PATH_SERVICE_MODEL:-models/GART_Military/gart.pt}"
 
 if [ -n "${PATH_SERVICE_PYTHON:-}" ]; then
   :
@@ -26,7 +26,7 @@ if [ -f logs/path_service.pid ] || [ -f logs/server_agent.pid ] || [ -f logs/sta
   echo "Existing pid files found under logs/. Run ./stop_suite.sh first if the suite is already running."
 fi
 
-"$PATH_SERVICE_PYTHON" drl-or-s/path_service.py --topo Military --port 8889 \
+"$PATH_SERVICE_PYTHON" -m gart.path_service --topo Military --port 8889 \
   --algorithm "$ROUTING_ALGORITHM" --model "$PATH_SERVICE_MODEL" > logs/path_service.log 2>&1 &
 echo $! > logs/path_service.pid
 
@@ -46,10 +46,10 @@ fi
 "$PYTHON_BIN" -u start_controllers_test.py start -n > logs/controllers.log 2>&1 &
 echo $! > logs/start_controllers.pid
 
-echo "DRL-OR-S Routing Suite started"
+echo "GART Routing Suite started"
 echo "server socket: 6001"
 echo "Web UI: http://localhost:6009"
-echo "DRL path_service: 127.0.0.1:8889"
+echo "GART path_service: 127.0.0.1:8889"
 echo "routing algorithm: $ROUTING_ALGORITHM"
 echo "server_agent route mode: $SERVER_AGENT_ROUTE_MODE"
 echo "Starting Military Mininet topology in this terminal..."
