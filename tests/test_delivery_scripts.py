@@ -66,22 +66,14 @@ def test_mininet_launcher_reads_repository_topology_fixture():
     assert "RemoteController" in text
 
 
-def test_baseline_assets_are_isolated_from_primary_gart_package():
-    baseline_dir = ROOT / "baseline" / "drl-or-s"
-    model_dir = baseline_dir / "model" / "Military_mininet"
-    topology_dir = baseline_dir / "topology" / "Military"
-    simenv_text = (baseline_dir / "net_env" / "simenv.py").read_text(encoding="utf-8")
+def test_primary_gart_package_has_no_legacy_runtime_assets():
     path_service_text = (ROOT / "gart" / "path_service.py").read_text(encoding="utf-8")
 
     assert (ROOT / "gart").is_dir()
-    assert len(list(model_dir.glob("agent*.pth"))) == 47
-    assert (model_dir / "agent0.pth").exists()
-    assert (model_dir / "agent46.pth").exists()
-    assert (topology_dir / "Topology.txt").exists()
-    assert (topology_dir / "TM.txt").exists()
+    assert not (ROOT / "baseline").exists()
     assert not (ROOT / "topology" / "Military").exists()
-    assert "os.path.join(package_root, \"topology\", toponame)" in simenv_text
     assert "DEFAULT_GART_MODEL" in path_service_text
+    assert "NetEnv" not in path_service_text
 
 
 def test_standalone_metadata_is_packaged():

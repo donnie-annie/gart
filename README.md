@@ -2,8 +2,7 @@
 
 GART is a standalone decentralized routing project built around graph
 attention, PPO, dual rewards, and bounded local observations. The main
-implementation lives in `gart/`; the historical DRL-OR-S code is isolated
-under `baseline/drl-or-s/` for optional comparisons.
+implementation lives in `gart/`.
 
 ## Topology set
 
@@ -27,7 +26,6 @@ in each `topology/<dataset>/metadata.json`.
 | `topology/` | Benchmark topologies and runnable traffic fixtures |
 | `models/` | Per-topology GART checkpoint output |
 | `testbed/topology_launcher.py` | Generic Mininet launcher for topology fixtures |
-| `baseline/drl-or-s/` | Legacy DRL-OR-S code, Military topology and checkpoints |
 | `tests/` | Unit and integration tests |
 
 Each routing decision builds the current agent's two-hop induced subgraph,
@@ -78,17 +76,6 @@ GART_TOPOLOGY=renater2010 ./start_suite.sh
 
 The corresponding default checkpoint is `models/<topology>/gart.pt`. If it is
 missing, the path service reports the reason and falls back to Dijkstra.
-
-## Baseline comparison
-
-The Military scenario is available only for explicit DRL-OR-S baseline runs:
-
-```bash
-python3 -m gart.path_service \
-  --topo Military \
-  --algorithm baseline \
-  --model baseline/drl-or-s/model/Military_mininet
-```
 
 ## Validation
 

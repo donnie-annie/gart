@@ -1,11 +1,10 @@
-"""GART routing service with an optional legacy baseline adapter.
+"""GART routing service with topology-aware Dijkstra fallback.
 
 Run the primary implementation from the repository root with::
 
     python3 -m gart.path_service --topo nsfnet --port 8889
 
-The historical DRL-OR-S runtime is imported only when ``--algorithm baseline``
-is selected. Missing models always fall back to topology-aware Dijkstra.
+Missing models always fall back to topology-aware Dijkstra.
 """
 
 import argparse
@@ -26,45 +25,24 @@ except ImportError as exc:
 else:
     TORCH_IMPORT_ERROR = None
 
-try:
-    from torch_geometric.data import Data
-except ImportError as exc:
-    Data = None
-    TORCH_GEOMETRIC_IMPORT_ERROR = exc
-else:
-    TORCH_GEOMETRIC_IMPORT_ERROR = None
-
 SERVICE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SERVICE_DIR)
-BASELINE_DIR = os.path.join(PROJECT_ROOT, "baseline", "drl-or-s")
 TOPOLOGY_ROOT = os.path.join(PROJECT_ROOT, "topology")
 DEFAULT_GART_MODEL = os.path.join(
     PROJECT_ROOT, "models", "nsfnet", "gart.pt")
-DEFAULT_BASELINE_MODEL = os.path.join(
-    BASELINE_DIR, "model", "Military_mininet")
 
-# 设置环境变量，告诉 NetEnv 不要连接 Mininet
-os.environ['SKIP_MININET_CONNECT'] = '1'
-
-# Import the primary package from the project root. The baseline path is kept
-# separate and is used only by the guarded compatibility imports below.
+# Import the primary package when this file is launched directly.
 sys.path.insert(0, PROJECT_ROOT)
-sys.path.insert(0, BASELINE_DIR)
 
 
-def _resolve_service_path(path, algorithm="gart", topo_name="nsfnet"):
+def _resolve_service_path(path, topo_name="nsfnet"):
     if not path:
-        if algorithm in {"baseline", "drl-or-s"}:
-            return DEFAULT_BASELINE_MODEL
         return os.path.join(
             PROJECT_ROOT, "models", str(topo_name).lower(), "gart.pt")
     if os.path.isabs(path):
         return path
     return os.path.join(PROJECT_ROOT, path)
 
-NetEnv = None
-Request = None
-Policy = None
 GARTActorCritic = None
 GARTConfig = None
 GARTTopologyIndex = None
@@ -86,60 +64,6 @@ if torch is not None:
         GART_IMPORT_ERROR = None
 else:
     GART_IMPORT_ERROR = TORCH_IMPORT_ERROR
-
-if torch is not None and Data is not None:
-    # 尝试导入并打补丁
-    try:
-        from net_env import simenv
-
-        # 保存原始的 NetEnv.__init__
-        _original_netenv_init = simenv.NetEnv.__init__
-
-        def _patched_netenv_init(self, args):
-            """打补丁的 NetEnv.__init__，跳过 socket 连接"""
-            original_socket = None
-            try:
-                import socket as socket_module
-                original_socket = socket_module.socket
-
-                class FakeSocket:
-                    def connect(self, addr):
-                        print("[PATCH] 跳过 socket.connect(%s)" % str(addr))
-                        pass
-                    def close(self):
-                        pass
-                    def send(self, data):
-                        return len(data)
-                    def recv(self, size):
-                        return b''
-
-                if os.getenv('SKIP_MININET_CONNECT') == '1':
-                    socket_module.socket = lambda *a, **kw: FakeSocket()
-
-                _original_netenv_init(self, args)
-                socket_module.socket = original_socket
-
-            except Exception as e:
-                print("[PATCH] 警告：初始化时出现异常: %s" % e)
-                import socket as socket_module
-                if original_socket is not None:
-                    socket_module.socket = original_socket
-                raise
-
-        simenv.NetEnv.__init__ = _patched_netenv_init
-        print("[PATCH] NetEnv 补丁已应用")
-
-    except Exception as e:
-        print("[PATCH] 无法应用补丁: %s" % e)
-        print("[PATCH] 将尝试正常加载...")
-
-    try:
-        from net_env.simenv import NetEnv, Request  # noqa: E402
-        from a2c_ppo_acktr.model import Policy      # noqa: E402
-    except Exception as exc:
-        NET_ENV_IMPORT_ERROR = exc
-else:
-    NET_ENV_IMPORT_ERROR = TORCH_IMPORT_ERROR or TORCH_GEOMETRIC_IMPORT_ERROR
 
 
 # ============================================================
@@ -240,14 +164,9 @@ class GARTPathService(object):
         self.port = port
         self.topo_name = topo_name
         self.algorithm_requested = (algorithm or "auto").strip().lower()
-        if self.algorithm_requested not in {
-                "auto", "gart", "baseline", "drl-or-s"}:
-            raise ValueError(
-                "algorithm must be one of: auto, gart, baseline, drl-or-s")
-        if self.algorithm_requested == "drl-or-s":
-            self.algorithm_requested = "baseline"
-        self.model_path = _resolve_service_path(
-            model_path, self.algorithm_requested, topo_name)
+        if self.algorithm_requested not in {"auto", "gart"}:
+            raise ValueError("algorithm must be one of: auto, gart")
+        self.model_path = _resolve_service_path(model_path, topo_name)
 
         print("[初始化] 拓扑: %s, 端口: %d, 算法: %s"
               % (topo_name, port, self.algorithm_requested))
@@ -260,14 +179,7 @@ class GARTPathService(object):
         np.random.seed(1)
         torch.manual_seed(1)
 
-        self.env = None
-        self.num_agent = 0
         self.num_node = 0
-        self.node_state_dim = 3
-        self.num_type = 4
-        self.agent_to_node = []
-        self.edge_indexs = []
-        self.adj_masks = []
         self._static_topology_edges = []
 
         topology_file = os.path.join(
@@ -281,33 +193,7 @@ class GARTPathService(object):
             }
             self.num_node = len(node_ids)
 
-        # The legacy NetEnv belongs only to explicit baseline runs.
-        if (self.algorithm_requested == "baseline" and NetEnv is not None
-                and Policy is not None and Data is not None):
-            print("[初始化] 正在创建兼容 NetEnv...")
-            args = argparse.Namespace()
-            args.use_mininet = False
-            args.simu_port = 5000
-            try:
-                self.env = NetEnv(args)
-                (
-                    self.num_agent,
-                    self.num_node,
-                    _observation_spaces,
-                    _action_spaces,
-                    self.num_type,
-                    self.node_state_dim,
-                    self.agent_to_node,
-                    self.edge_indexs,
-                    self.adj_masks,
-                ) = self.env.setup(topo_name)
-                print("[初始化] NetEnv 创建成功")
-            except Exception as exc:
-                print("[初始化] 兼容 NetEnv 不可用: %s" % exc)
-                self.env = None
-
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.actor_critic = None
         self.gart_model = None
         self._last_model_action_used = False
         self._last_model_confidence = None
@@ -326,240 +212,25 @@ class GARTPathService(object):
             if os.path.exists(candidate):
                 gart_checkpoint = candidate
 
-        if self.algorithm_requested == "gart":
-            self.model_kind = "gart"
-        elif self.algorithm_requested == "baseline":
-            self.model_kind = "baseline"
+        self.model_kind = "gart"
+
+        if GARTActorCritic is None:
+            print("[模型] GART 运行时不可用: %s" % GART_IMPORT_ERROR)
+        elif not gart_checkpoint:
+            print("[模型] 未找到 GART checkpoint (期望 gart.pt)，将回退 Dijkstra")
         else:
-            self.model_kind = "gart"
-
-        # Load the GART checkpoint when requested or auto-detected.
-        if self.model_kind == "gart":
-            if GARTActorCritic is None:
-                print("[模型] GART 运行时不可用: %s" % GART_IMPORT_ERROR)
-            elif not gart_checkpoint:
-                print("[模型] 未找到 GART checkpoint (期望 gart.pt)，将回退 Dijkstra")
-            else:
-                try:
-                    checkpoint = torch.load(gart_checkpoint, map_location="cpu")
-                    self.gart_model = GARTActorCritic.from_checkpoint(checkpoint)
-                    self.gart_model.to(self.device)
-                    self.gart_model.eval()
-                    print("[模型] GART 模型已加载: %s" % gart_checkpoint)
-                except Exception as exc:
-                    print("[模型] GART 加载失败: %s" % exc)
-                    self.gart_model = None
-
-        # Legacy DRL-OR-S checkpoints are isolated behind baseline mode.
-        elif (self.model_kind == "baseline" and self.model_path
-              and self.env is not None and Policy is not None):
-            print("[模型] 正在加载模型: %s" % self.model_path)
             try:
-                self.actor_critic = Policy(
-                    self.node_state_dim, self.num_node, self.num_type, base_kwargs={})
-                model_file = os.path.join(self.model_path, "agent0.pth")
-                if os.path.exists(model_file):
-                    state_dict = torch.load(model_file, map_location="cpu")
-                    self.actor_critic.load_state_dict(state_dict)
-                    self.actor_critic.to(self.device)
-                    self.actor_critic.eval()
-                    print("[模型] DRL 模型已加载: %s" % model_file)
-                else:
-                    print("[模型] 模型文件不存在: %s" % model_file)
-                    print("[模型] 将使用最短路径算法")
-                    self.actor_critic = None
-            except Exception as e:
-                print("[模型] 加载失败: %s" % e)
-                print("[模型] 将使用最短路径算法")
-                self.actor_critic = None
-        else:
-            print("[模型] baseline 运行时或模型不可用，将回退 Dijkstra")
+                checkpoint = torch.load(gart_checkpoint, map_location="cpu")
+                self.gart_model = GARTActorCritic.from_checkpoint(checkpoint)
+                self.gart_model.to(self.device)
+                self.gart_model.eval()
+                print("[模型] GART 模型已加载: %s" % gart_checkpoint)
+            except Exception as exc:
+                print("[模型] GART 加载失败: %s" % exc)
+                self.gart_model = None
 
-        print("[初始化] 完成！拓扑: %s, 节点数: %d, Agent数: %d, 模型: %s"
-              % (topo_name, self.num_node, self.num_agent, self.model_kind))
-
-    # ============================================================
-    #  判断节点是否在 DRL 模型范围内
-    # ============================================================
-    def _in_drl_range(self, dpid):
-        """
-        判断 1-based DPID 是否在 DRL 模型的训练范围内。
-        DRL 模型训练的节点为 0-based: 0 ~ num_node-1，
-        对应 1-based DPID: 1 ~ num_node。
-        """
-        return 1 <= dpid <= self.num_node
-
-    # ============================================================
-    #  DRL 相关方法（保持原有逻辑不变）
-    # ============================================================
-    def _reset_env_with_request(self, src_node, dst_node, rtype=0, demand=100, duration=50):
-        """按指定请求重建环境状态，避免 env.reset() 生成随机请求导致观测与请求不一致。
-            参数：
-            src_node: 源节点（0-based）
-            dst_node: 目标节点（0-based）
-            rtype: 请求类型（0-3）
-            demand: 带宽需求（Kbps）
-            duration: 请求持续时间（秒）
-        """
-        self.env._time_step = 0
-        self.env._request_heapq = []
-        self.env._link_usage = [([0.] * self.num_node) for _ in range(self.num_node)]
-        self.env._delay_normal = [([1.] * self.num_node) for _ in range(self.num_node)]
-        self.env._loss_normal = [([1.] * self.num_node) for _ in range(self.num_node)]
-
-        import random as _random
-        import numpy as _np
-
-        orig_random_sample = _random.sample
-        orig_random_choice = _random.choice
-        orig_np_choice = _np.random.choice
-        try:
-            def _fixed_sample(population, k):
-                return [src_node, dst_node]
-
-            def _fixed_choice(seq):
-                if isinstance(seq, (list, tuple)) and len(seq) > 0:
-                    return seq[0]
-                return orig_random_choice(seq)
-
-            def _fixed_np_choice(a, p=None):
-                if hasattr(a, '__iter__'):
-                    return rtype
-                return orig_np_choice(a, p=p)
-
-            _random.sample = _fixed_sample
-            _random.choice = _fixed_choice
-            _np.random.choice = _fixed_np_choice
-
-            self.env._update_state(pre_train=True)
-
-            self.env._request.s = src_node
-            self.env._request.t = dst_node
-            self.env._request.rtype = rtype
-            self.env._request.demand = demand
-            self.env._request.start_time = 0
-            self.env._request.end_time = duration
-
-            return self.env._request, self.env._states
-        finally:
-            _random.sample = orig_random_sample
-            _random.choice = orig_random_choice
-            _np.random.choice = orig_np_choice
-
-    def _sanitize_path(self, path, src_node, dst_node):
-        """
-        清洗 DRL 生成路径，避免环路/断链导致的重复包和高时延。
-        """
-        if not path:
-            return self.env.calcSHR(src_node, dst_node)
-
-        # 强制起点
-        if path[0] != src_node:
-            path = [src_node] + [n for n in path if n != src_node]
-
-        # 消环
-        simple_path = []
-        pos = {}
-        for node in path:
-            if node in pos:
-                keep = pos[node] + 1
-                simple_path = simple_path[:keep]
-                pos = {n: i for i, n in enumerate(simple_path)}
-            else:
-                pos[node] = len(simple_path)
-                simple_path.append(node)
-
-        path = simple_path
-
-        # 强制终点
-        if path[-1] != dst_node:
-            tail = self.env.calcSHR(path[-1], dst_node)
-            if tail and len(tail) > 1:
-                path.extend(tail[1:])
-
-        # 最终校验
-        if len(path) != len(set(path)):
-            return self.env.calcSHR(src_node, dst_node)
-
-        for u, v in zip(path[:-1], path[1:]):
-            if v not in self.env._link_lists[u]:
-                return self.env.calcSHR(src_node, dst_node)
-
-        if path[0] != src_node or path[-1] != dst_node:
-            return self.env.calcSHR(src_node, dst_node)
-
-        return path
-
-    def compute_path_with_drl(self, src_node, dst_node):
-        """使用 DRL 模型计算路径（0-based 索引）"""
-        self._last_model_action_used = False
-        if self.actor_critic is None:
-            return self.env.calcSHR(src_node, dst_node)
-
-        try:
-            request, obses = self._reset_env_with_request(
-                src_node, dst_node, rtype=0, demand=100, duration=50)
-            path = [src_node]
-            curr_path = [0] * self.num_node
-            curr_path[src_node] = 1
-            curr_agent, initial_path = self.env.first_agent()
-            if initial_path:
-                path = initial_path.copy()
-                for node in initial_path:
-                    curr_path[node] = 1
-            if dst_node in path:
-                return self._sanitize_path(path, src_node, dst_node)
-
-            agents_flag = [0] * self.num_agent
-            while curr_agent is not None and agents_flag[curr_agent] != 1:
-                agents_flag[curr_agent] = 1
-                condition_state = torch.tensor(
-                    curr_path, dtype=torch.float32).unsqueeze(-1).to(self.device)
-                edge_index = torch.tensor(
-                    self.edge_indexs[self.agent_to_node[curr_agent]],
-                    dtype=torch.long,
-                ).t().contiguous().to(self.device)
-                obs = torch.tensor(
-                    obses[curr_agent], dtype=torch.float32).unsqueeze(0).to(self.device)
-                inputs = Data(x=obs, edge_index=edge_index)
-                adj_mask = torch.tensor(
-                    self.adj_masks[self.agent_to_node[curr_agent]],
-                    dtype=torch.float32,
-                ).to(self.device)
-                rtype = torch.tensor([request.rtype], dtype=torch.long).to(self.device)
-                with torch.no_grad():
-                    _value, action, _action_log_probability = self.actor_critic.act(
-                        inputs,
-                        condition_state.unsqueeze(0),
-                        self.agent_to_node[curr_agent],
-                        rtype,
-                        adj_mask,
-                        deterministic=True,
-                    )
-                self._last_model_action_used = True
-                next_agent, path_segment = self.env.next_agent(curr_agent, action)
-                for node in path_segment or []:
-                    if node not in path:
-                        path.append(node)
-                        curr_path[node] = 1
-                    if dst_node in path:
-                        break
-                curr_agent = next_agent
-
-            if not path:
-                path = [src_node]
-            if path[0] != src_node:
-                path.insert(0, src_node)
-            if path[-1] != dst_node:
-                remaining = self.env.calcSHR(path[-1], dst_node)
-                if remaining and len(remaining) > 1:
-                    path.extend(remaining[1:])
-            return self._sanitize_path(path, src_node, dst_node)
-        except Exception as exc:
-            print("[DRL] 计算失败: %s" % exc)
-            import traceback
-            traceback.print_exc()
-            return self.env.calcSHR(src_node, dst_node)
+        print("[初始化] 完成！拓扑: %s, 节点数: %d, 模型: %s"
+              % (topo_name, self.num_node, self.model_kind))
 
     def _sanitize_gart_path(self, path, src_node, dst_node, topo_edges):
         if not path or path[0] != src_node or path[-1] != dst_node:
@@ -650,104 +321,38 @@ class GARTPathService(object):
     #  对外接口：统一路径计算入口
     # ============================================================
     def compute_path(self, src_node, dst_node, topo_edges=None, flow=None):
-        """
-        对外接口：统一路径计算
-        
-        参数：
-            src_node: 源交换机 DPID（1-based）
-            dst_node: 目标交换机 DPID（1-based）
-            topo_edges: 控制器传来的拓扑边列表 [[src, dst], ...]（1-based DPID）
-                        当 DRL 无法处理时用于 Dijkstra 回退
-        
-        返回：
-            决策字典，包含路径、真实决策来源、模型是否执行以及 fallback 原因。
-        
-        策略：
-            1. src 和 dst 都在 DRL 范围内 → 走 DRL
-            2. 任一节点超出 DRL 范围 → 走 Dijkstra（需要 topo_edges）
-            3. DRL 失败 → 回退 Dijkstra
-            4. Dijkstra 也失败 → 返回直连 [src, dst]
-        """
+        """Compute a GART route and fall back to Dijkstra when needed."""
         flow = flow or {}
-        if self.model_kind == "gart":
-            edges = topo_edges or self._static_topology_edges
-            deadline_ms = float(flow.get("deadline_ms", 200.0))
-            if self.gart_model is not None:
-                path = self.compute_path_with_gart(
-                    src_node, dst_node, edges, deadline_ms=deadline_ms)
-                if path:
-                    print("[路径] GART 计算: %d -> %d = %s"
-                          % (src_node, dst_node, path))
-                    return _decision(
-                        "gart_model",
-                        path,
-                        model_used=True,
-                        fallback_reason=None,
-                        confidence=self._last_model_confidence,
-                    )
+        edges = topo_edges or self._static_topology_edges
+        deadline_ms = float(flow.get("deadline_ms", 200.0))
 
-            if edges:
-                path = _dijkstra_on_edges(edges, src_node, dst_node)
-                if path:
-                    reason = "gart_failed" if self.gart_model is not None else "gart_model_not_loaded"
-                    return _decision(
-                        "dijkstra", path, model_used=False, fallback_reason=reason)
-            return _decision(
-                "none", None, model_used=False, fallback_reason="gart_no_path")
-
-        src_in_range = self._in_drl_range(src_node)
-        dst_in_range = self._in_drl_range(dst_node)
-
-        # ---- 情况1：两端都在 DRL 范围内，尝试 DRL ----
-        if src_in_range and dst_in_range:
-            try:
-                src_0based = src_node - 1
-                dst_0based = dst_node - 1
-
-                if self.actor_critic is not None:
-                    path_0based = self.compute_path_with_drl(src_0based, dst_0based)
-                    decision_source = "drl_model" if self._last_model_action_used else "drl_shr"
-                    fallback_reason = None if self._last_model_action_used else "model_action_not_used"
-                    model_used = self._last_model_action_used
-                else:
-                    path_0based = self.env.calcSHR(src_0based, dst_0based)
-                    decision_source = "drl_shr"
-                    fallback_reason = "model_not_loaded"
-                    model_used = False
-
-                if path_0based:
-                    path_1based = [node + 1 for node in path_0based]
-                    print("[路径] %s 计算: %d -> %d = %s" % (decision_source, src_node, dst_node, path_1based))
-                    return _decision(decision_source, path_1based, model_used=model_used,
-                                     fallback_reason=fallback_reason)
-            except Exception as e:
-                print("[路径] DRL 异常，回退 Dijkstra: %s" % e)
-
-        # ---- 情况2/3：DRL 范围外 或 DRL 失败，走 Dijkstra ----
-        if topo_edges:
-            path = _dijkstra_on_edges(topo_edges, src_node, dst_node)
+        if self.gart_model is not None:
+            path = self.compute_path_with_gart(
+                src_node, dst_node, edges, deadline_ms=deadline_ms)
             if path:
-                print("[路径] Dijkstra 计算: %d -> %d = %s" % (src_node, dst_node, path))
-                return _decision("dijkstra", path, model_used=False,
-                                 fallback_reason="out_of_drl_range_or_drl_failed")
-            else:
-                print("[路径] Dijkstra 无路径: %d -> %d" % (src_node, dst_node))
-        else:
-            # 没有 topo_edges 且 DRL 范围外，尝试用 NetEnv 内部最短路径（仅限范围内）
-            if src_in_range and dst_in_range:
-                try:
-                    path_0based = self.env.calcSHR(src_node - 1, dst_node - 1)
-                    if path_0based:
-                        path_1based = [node + 1 for node in path_0based]
-                        print("[路径] NetEnv SHR 回退: %d -> %d = %s" % (src_node, dst_node, path_1based))
-                        return _decision("drl_shr", path_1based, model_used=False,
-                                         fallback_reason="no_topo_edges")
-                except Exception:
-                    pass
-            print("[路径] 无 topo_edges 且超出 DRL 范围: %d -> %d" % (src_node, dst_node))
+                print("[路径] GART 计算: %d -> %d = %s"
+                      % (src_node, dst_node, path))
+                return _decision(
+                    "gart_model",
+                    path,
+                    model_used=True,
+                    fallback_reason=None,
+                    confidence=self._last_model_confidence,
+                )
 
-        print("[路径] 无可用路径: %d -> %d" % (src_node, dst_node))
-        return _decision("none", None, model_used=False, fallback_reason="no_path")
+        if edges:
+            path = _dijkstra_on_edges(edges, src_node, dst_node)
+            if path:
+                reason = (
+                    "gart_failed"
+                    if self.gart_model is not None
+                    else "gart_model_not_loaded"
+                )
+                return _decision(
+                    "dijkstra", path, model_used=False, fallback_reason=reason)
+
+        return _decision(
+            "none", None, model_used=False, fallback_reason="gart_no_path")
 
     # ============================================================
     #  TCP 服务
@@ -761,11 +366,7 @@ class GARTPathService(object):
         print("[服务] 已启动，监听端口 %d" % self.port)
         print("[服务] 等待控制器的路径计算请求...")
         print("[服务] 当前模型: %s" % self.model_kind)
-        if self.model_kind == "baseline":
-            print("[服务] DRL 节点范围: 1 ~ %d (0-based: 0 ~ %d)" % (self.num_node, self.num_node - 1))
-            print("[服务] 超出范围的节点将使用 Dijkstra 回退（需控制器传入 topo_edges）")
-        else:
-            print("[服务] GART 使用控制器提供的动态拓扑和流截止期")
+        print("[服务] GART 使用控制器提供的动态拓扑和流截止期")
 
         def handle_client(conn, addr):
             """处理单个客户端连接（长连接，支持多个请求）"""
@@ -914,9 +515,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--algorithm",
-        choices=("auto", "gart", "baseline", "drl-or-s"),
+        choices=("auto", "gart"),
         default="gart",
-        help="路由模型；drl-or-s 是 baseline 的兼容别名",
+        help="路由模型",
     )
     args = parser.parse_args()
 
