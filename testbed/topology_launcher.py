@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Launch any paper topology from its repository Topology.txt fixture."""
+"""Launch a topology from its repository Topology.txt fixture."""
 
 import argparse
 from pathlib import Path
@@ -66,7 +66,7 @@ def create_topology(topology_path, external_intf=None, controller_port=6654):
             external_port=EXTERNAL_PORT,
         )
     try:
-        print("Loaded paper topology %s: %d nodes, %d physical links"
+        print("Loaded topology %s: %d nodes, %d physical links"
               % (topology_path, node_count, len(links)))
         CLI(net)
     finally:
@@ -76,7 +76,7 @@ def create_topology(topology_path, external_intf=None, controller_port=6654):
 
 
 def parse_args(argv=None):
-    parser = argparse.ArgumentParser(description="Launch a GART paper topology in Mininet")
+    parser = argparse.ArgumentParser(description="Launch a GART topology in Mininet")
     parser.add_argument(
         "--topology",
         default=str(PROJECT_ROOT / "topology" / "nsfnet" / "Topology.txt"),

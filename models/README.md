@@ -6,5 +6,5 @@ Training writes topology-specific checkpoints beneath this directory:
 models/<dataset>/gart.pt
 ```
 
-Supported paper datasets are `nsfnet`, `geant2`, `renater2010`, and
+Supported datasets are `nsfnet`, `geant2`, `renater2010`, and
 `synthetic300`. Checkpoints are generated artifacts and are not committed.

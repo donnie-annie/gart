@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from gart.topologies import DEFAULT_TOPOLOGY, PAPER_TOPOLOGIES, get_paper_topology
+from gart.topologies import DEFAULT_TOPOLOGY, TOPOLOGIES, get_topology
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,17 +42,17 @@ def is_connected(node_count, edges):
     return len(reached) == node_count
 
 
-def test_catalog_and_fixtures_match_paper_counts():
+def test_catalog_and_fixtures_match_expected_counts():
     assert DEFAULT_TOPOLOGY == "nsfnet"
-    assert set(PAPER_TOPOLOGIES) == set(EXPECTED)
+    assert set(TOPOLOGIES) == set(EXPECTED)
     for name, (expected_nodes, expected_physical, expected_directed) in EXPECTED.items():
         nodes, physical, edges, matrix, metadata = read_fixture(name)
         assert (nodes, physical, physical * 2) == (
             expected_nodes, expected_physical, expected_directed)
-        assert PAPER_TOPOLOGIES[name].nodes == expected_nodes
-        assert PAPER_TOPOLOGIES[name].directed_links == expected_directed
-        assert metadata["paper_counts"]["nodes"] == expected_nodes
-        assert metadata["paper_counts"]["directed_links"] == expected_directed
+        assert TOPOLOGIES[name].nodes == expected_nodes
+        assert TOPOLOGIES[name].directed_links == expected_directed
+        assert metadata["expected_counts"]["nodes"] == expected_nodes
+        assert metadata["expected_counts"]["directed_links"] == expected_directed
         assert len(matrix) == nodes * nodes
 
 
@@ -67,10 +67,10 @@ def test_fixtures_are_connected_contiguous_simple_graphs():
         assert is_connected(nodes, edges)
 
 
-def test_synthetic_average_out_degree_matches_paper():
+def test_synthetic_average_out_degree_matches_catalog():
     nodes, physical, _edges, _matrix, metadata = read_fixture("synthetic300")
     assert 2.0 * physical / nodes == 4.46
-    assert metadata["paper_counts"]["average_out_degree"] == 4.46
+    assert metadata["expected_counts"]["average_out_degree"] == 4.46
     assert metadata["generator"]["seed"] == 1
 
 
@@ -82,7 +82,7 @@ def test_geant_normalization_is_explicit():
 
 
 def test_training_defaults_follow_nsfnet_catalog():
-    dataset = get_paper_topology()
+    dataset = get_topology()
     train_source = (ROOT / "gart" / "train.py").read_text(encoding="utf-8")
     assert dataset.name == "nsfnet"
     assert dataset.topology_path == ROOT / "topology" / "nsfnet" / "Topology.txt"

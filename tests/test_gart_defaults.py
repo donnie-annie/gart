@@ -9,23 +9,23 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from gart.config import GARTConfig, PAPER_FLOW_PROFILES
+from gart.config import FLOW_PROFILES, GARTConfig
 from gart.observation import build_gart_observation
 from gart.rewards import DualReward
 from gart.topology_env import TopologyRoutingEnv
 
 
-class GARTPaperAlignmentTests(unittest.TestCase):
-    def test_table_ii_flow_profiles(self):
-        self.assertEqual(PAPER_FLOW_PROFILES["EU"], {
+class GARTDefaultsTests(unittest.TestCase):
+    def test_flow_profiles(self):
+        self.assertEqual(FLOW_PROFILES["EU"], {
             "proportion": 0.05, "deadline_ms": 20.0})
-        self.assertEqual(PAPER_FLOW_PROFILES["MU"]["deadline_ms"], 50.0)
-        self.assertEqual(PAPER_FLOW_PROFILES["LU"]["proportion"], 0.70)
-        self.assertEqual(PAPER_FLOW_PROFILES["RT"]["deadline_ms"], 200.0)
+        self.assertEqual(FLOW_PROFILES["MU"]["deadline_ms"], 50.0)
+        self.assertEqual(FLOW_PROFILES["LU"]["proportion"], 0.70)
+        self.assertEqual(FLOW_PROFILES["RT"]["deadline_ms"], 200.0)
         self.assertTrue(math.isclose(
-            sum(item["proportion"] for item in PAPER_FLOW_PROFILES.values()), 1.0))
+            sum(item["proportion"] for item in FLOW_PROFILES.values()), 1.0))
 
-    def test_table_iii_model_and_ppo_defaults(self):
+    def test_model_and_ppo_defaults(self):
         config = GARTConfig()
         self.assertEqual(config.gat_layers, 2)
         self.assertEqual(config.attention_heads, 4)
@@ -43,7 +43,7 @@ class GARTPaperAlignmentTests(unittest.TestCase):
         self.assertEqual(config.local_reward_weight, 0.5)
         self.assertEqual(config.global_reward_weight, 0.5)
 
-    def test_equations_2_to_4(self):
+    def test_dual_reward_contract(self):
         reward = DualReward()
         self.assertEqual(reward.local(routing_loop=True), -1.0)
         self.assertEqual(reward.local(ack_received=False), -1.0)

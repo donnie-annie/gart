@@ -144,7 +144,7 @@ def build_gart_observation(topo_edges, current_node, destination_node,
     """Create capacity/delay/loss node features and a valid-next-hop mask.
 
     Only the induced subgraph within ``neighborhood_hops`` of the current
-    agent is materialized.  With the paper's two GAT layers this is the bounded
+    agent is materialized. With two GAT layers this is the bounded
     two-hop receptive field described by Algorithm 1 and Equations (5)-(7).
     """
     topology = (
