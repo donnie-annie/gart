@@ -66,9 +66,6 @@ else:
     GART_IMPORT_ERROR = TORCH_IMPORT_ERROR
 
 
-# ============================================================
-#  Dijkstra 回退：基于控制器传来的拓扑边列表计算最短路径
-# ============================================================
 try:
     import networkx as nx
     HAS_NX = True
@@ -96,12 +93,7 @@ def _normalize_topo_edge(edge):
 
 
 def _dijkstra_on_edges(topo_edges, src, dst):
-    """
-    根据控制器传来的边列表构建有向图，用 Dijkstra 计算最短路径。
-    topo_edges: [[src_dpid, dst_dpid], ...] （1-based DPID）
-    src, dst: 1-based DPID
-    返回: 1-based 路径列表，如 [1, 4, 7, 10]；失败返回 None
-    """
+    """Compute a shortest path over controller-provided directed edges."""
     if not topo_edges:
         return None
 
@@ -120,7 +112,6 @@ def _dijkstra_on_edges(topo_edges, src, dst):
         except Exception:
             return None
     else:
-        # 简易 BFS 回退（无 networkx 时）
         from collections import deque, defaultdict
         adj = defaultdict(list)
         for edge in topo_edges:
@@ -152,12 +143,7 @@ def _decision(decision_source, path, model_used=False, fallback_reason=None, con
 
 
 class GARTPathService(object):
-    """
-    路径计算服务（独立 TCP 进程）
-    - DRL 范围内的节点：使用训练好的 DRL 模型计算路径
-    - DRL 范围外的节点：使用控制器传来的拓扑边做 Dijkstra 最短路径
-    - 混合场景（路径跨越 DRL 范围内外）：整体走 Dijkstra
-    """
+    """Serve GART routing decisions over a local TCP socket."""
 
     def __init__(self, topo_name="nsfnet", port=8889, model_path=None,
                  algorithm="gart"):
@@ -174,7 +160,6 @@ class GARTPathService(object):
         if torch is None:
             raise RuntimeError("PyTorch runtime unavailable: %s" % TORCH_IMPORT_ERROR)
 
-        # 固定随机种子
         random.seed(1)
         np.random.seed(1)
         torch.manual_seed(1)
@@ -317,9 +302,6 @@ class GARTPathService(object):
             traceback.print_exc()
         return None
 
-    # ============================================================
-    #  对外接口：统一路径计算入口
-    # ============================================================
     def compute_path(self, src_node, dst_node, topo_edges=None, flow=None):
         """Compute a GART route and fall back to Dijkstra when needed."""
         flow = flow or {}
@@ -354,11 +336,8 @@ class GARTPathService(object):
         return _decision(
             "none", None, model_used=False, fallback_reason="gart_no_path")
 
-    # ============================================================
-    #  TCP 服务
-    # ============================================================
     def run(self):
-        """启动 TCP 服务（多线程版本）"""
+        """Run the threaded TCP service."""
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind(("127.0.0.1", self.port))
@@ -369,7 +348,7 @@ class GARTPathService(object):
         print("[服务] GART 使用控制器提供的动态拓扑和流截止期")
 
         def handle_client(conn, addr):
-            """处理单个客户端连接（长连接，支持多个请求）"""
+            """Handle multiple requests over one client connection."""
             buffer = ""
             try:
                 while True:
@@ -487,7 +466,6 @@ class GARTPathService(object):
                     pass
                 print("[连接] 客户端断开: %s" % str(addr))
 
-        # 主循环
         while True:
             try:
                 conn, addr = s.accept()

@@ -1,12 +1,4 @@
-"""
-该文件从原始 controller 的 PacketIn 处理中拆分了主机 IP 通信处理功能。
-负责根据主机位置与任务类型选择域内/跨域路径并触发流表安装。
-
-函数作用：
-- handle_host_ip_packet_in(app, ev)：
-  处理主机 IP 包；同域时本地算路并下发流表，跨域时向根控请求路径，
-  同时携带任务类型、L4 匹配与策略信息。业务类型按 TCP/UDP 端口区间划分。
-"""
+"""Host IP PacketIn routing and flow installation."""
 
 import time
 
@@ -17,11 +9,7 @@ from controller_helpers import l4_reverse_for_match
 
 
 def handle_host_ip_packet_in(app, ev):
-    """
-    主机IP通信入口：
-    - 域内：本地最短路径并下发流表
-    - 跨域：向根控请求路径并等待回包后处理
-    """
+    """Route a host IP packet locally or through the root controller."""
     msg = ev.msg
     datapath = msg.datapath
     dpid = datapath.id
@@ -57,8 +45,6 @@ def handle_host_ip_packet_in(app, ev):
             app.logger.info("11_host_ip_packet_in_handle收到IP数据包: 源IP=%s,目标IP=%s,源MAC=%s,目标MAC=%s,交换机=%s,端口=%s",
                             src_ip, dst_ip, src_mac, dst_mac, dpid, in_port)
 
-        # 抓包模式下不安装路径流表，避免后续数据包被交换机本地命中转发
-        # 从而保证 IP 包持续上送控制器观察。
         if app.is_packet_capture_mode():
             app.logger.info(
                 "%s capture_mode=on skip_host_ip_flow_install dpid=%s in_port=%s src_ip=%s dst_ip=%s",

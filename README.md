@@ -26,6 +26,8 @@ in each `topology/<dataset>/metadata.json`.
 | `topology/` | Benchmark topologies and runnable traffic fixtures |
 | `models/` | Per-topology GART checkpoint output |
 | `testbed/topology_launcher.py` | Generic Mininet launcher for topology fixtures |
+| `start_controllers.py` | Ryu controller process launcher |
+| `server_agent.py` | Root routing service and Web API assembly |
 | `tests/` | Unit and integration tests |
 
 Each routing decision builds the current agent's two-hop induced subgraph,
@@ -76,6 +78,8 @@ GART_TOPOLOGY=renater2010 ./start_suite.sh
 
 The corresponding default checkpoint is `models/<topology>/gart.pt`. If it is
 missing, the path service reports the reason and falls back to Dijkstra.
+The bundled Mininet launcher connects to Ryu on port 6654. Custom testbeds can
+set `CONTROLLER_PORTS` to a comma-separated list before running the suite.
 
 ## Validation
 

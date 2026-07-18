@@ -1,14 +1,4 @@
-"""
-该文件从原始 controller 的 PacketIn 处理中拆分了 ARP 相关功能，
-包含“交换机侧 ARP/IP 二层学习转发”和“主机 ARP 学习发现”两部分。
-
-函数作用：
-- handle_switch_packet_in(app, ev)：
-  处理交换机上送的 ARP/IP 包，执行 ARP 学习、重复 ARP 抑制、
-  环路安全泛洪以及必要的短时流表下发。
-- handle_host_arp_packet_in(app, ev)：
-  处理主机 ARP 学习，仅在接入口记录主机位置并触发迁移清理（业务类型由 IP 包 L4 端口决定）。
-"""
+"""ARP PacketIn handling and host discovery."""
 
 from ryu.lib.packet import arp, ethernet, ether_types, packet
 
@@ -50,11 +40,7 @@ def _send_gateway_arp_reply(app, datapath, in_port, dst_mac, dst_ip):
 
 
 def handle_switch_packet_in(app, ev):
-    """
-    交换机侧 ARP/IP PacketIn 处理：
-    - ARP 学习/防风暴/防环路泛洪
-    - 短时流表下发
-    """
+    """Process switch-side ARP/IP learning and forwarding."""
     msg = ev.msg
     datapath = msg.datapath
     ofproto = datapath.ofproto
@@ -75,7 +61,6 @@ def handle_switch_packet_in(app, ev):
         src_ip = pkt.src
         dst_ip = pkt.dst
 
-    # 统一观测日志：每次 ARP/IP PacketIn 都打印，便于抓取收发包情况
     if eth.ethertype == ether_types.ETH_TYPE_ARP:
         opcode = getattr(pkt, 'opcode', None)
         app.log_packet_watch(
@@ -117,7 +102,6 @@ def handle_switch_packet_in(app, ev):
             )
             return
 
-    # 去重：同一交换机、同一源/目的 IP、同一源 MAC、同一 ARP opcode 在 TTL 内只处理一次
     if eth.ethertype == ether_types.ETH_TYPE_ARP:
         opcode = getattr(pkt, 'opcode', None)
         if app._arp_dedup_should_drop(dpid, src_mac, src_ip, dst_ip, opcode):
@@ -135,7 +119,6 @@ def handle_switch_packet_in(app, ev):
     out_ports = []
     if dst_mac in app.mac_to_port[dpid]:
         out_ports = sorted(list(app.mac_to_port[dpid][dst_mac]))
-        # 对 IP 包：即使学习到了多个端口，也固定使用第一个端口转发并下发流表。
         if eth.ethertype == ether_types.ETH_TYPE_IP and out_ports:
             if len(out_ports) > 1:
                 app.logger.info(
@@ -199,12 +182,7 @@ def handle_switch_packet_in(app, ev):
 
 
 def handle_host_arp_packet_in(app, ev):
-    """
-    主机发现（ARP）：
-    - 仅在非链路口学习主机
-    - 更新 host_to_sw_port
-    - 触发主机迁移处理及业务类型绑定
-    """
+    """Learn hosts from ARP packets received on access ports."""
     msg = ev.msg
     datapath = msg.datapath
     dpid = datapath.id

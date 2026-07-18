@@ -10,7 +10,7 @@ if str(ROOT) not in sys.path:
 def test_controller_manager_uses_project_logs_for_background_controller_output():
     from start_controllers import ControllerManager
 
-    manager = ControllerManager(use_terminal=False)
+    manager = ControllerManager()
 
     assert manager.log_dir == ROOT / "logs"
     assert manager.controller_log_path(6654) == ROOT / "logs" / "ryu_controller_6654.log"

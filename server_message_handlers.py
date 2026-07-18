@@ -1,15 +1,4 @@
-"""
-该文件从原始 server_agent 大文件中拆分了消息处理与连接维护功能，
-用于降低入口文件复杂度并清晰分离“消息分发/心跳检测/断联清理”职责。
-
-函数作用：
-- process_message(app, client_sock, client_addr, data)：
-  解析并分发客户端消息（heartbeat/topo/host/path_request/lldp_report 等）。
-- heartbeat_check_loop(app)：
-  周期检查客户端心跳，发现超时连接后触发清理。
-- cleanup_disconnected_client(app, client_addr, reason)：
-  清理断联客户端相关状态（连接、拓扑、主机、查询记录）并更新图。
-"""
+"""Server message dispatch, heartbeat checks, and connection cleanup."""
 
 import json
 import logging
@@ -21,7 +10,7 @@ logger = logging.getLogger("server_agent")
 
 
 def process_message(app, client_sock, client_addr, data):
-    """处理接收到的消息"""
+    """Parse and dispatch one controller message."""
     with app.client_lock:
         if client_addr in app.client_last_heartbeat:
             app.client_last_heartbeat[client_addr] = time.time()
@@ -127,7 +116,7 @@ def process_message(app, client_sock, client_addr, data):
 
 
 def heartbeat_check_loop(app):
-    """心跳检测循环，定期检查所有客户端的连接状态"""
+    """Remove clients that exceed the heartbeat timeout."""
     while app.is_running:
         try:
             current_time = time.time()
@@ -154,7 +143,7 @@ def heartbeat_check_loop(app):
 
 
 def cleanup_disconnected_client(app, client_addr, reason="未知"):
-    """清理断联客户端的相关数据"""
+    """Remove state associated with a disconnected controller."""
     try:
         logger.info(f"清理客户端 {client_addr} 的数据，原因: {reason}")
         print(f"清理客户端 {client_addr} 的数据，原因: {reason}")

@@ -15,18 +15,19 @@ def load_module(name, path):
     return module
 
 
-def test_test_topology_controller_ports_match_military_topology():
-    module = load_module("start_controllers_test", "start_controllers_test.py")
+def test_controller_launcher_defaults_to_mininet_port():
+    module = load_module("start_controllers", "start_controllers.py")
 
-    assert module.TEST_CONTROLLER_PORTS == [6654, 6655, 6656, 6657, 6658, 6659, 6670]
+    assert module.DEFAULT_PORTS == (6654,)
+    assert module.parse_ports("6654,6655,6654") == (6654, 6655)
 
 
-def test_test_topology_manager_defaults_to_no_external_terminal():
-    module = load_module("start_controllers_test", "start_controllers_test.py")
-    manager = module.build_manager()
+def test_controller_manager_uses_project_runtime_paths():
+    module = load_module("start_controllers", "start_controllers.py")
+    manager = module.ControllerManager()
 
-    assert manager.use_terminal is False
-    assert manager.pid_file.as_posix() == "/tmp/ryu_controllers_test.pid"
+    assert manager.ports == (6654,)
+    assert manager.pid_file.as_posix() == "/tmp/gart_ryu_controllers.json"
     assert manager.log_dir == ROOT / "logs"
     assert manager.controller_log_path(6654) == ROOT / "logs" / "ryu_controller_6654.log"
 
@@ -34,7 +35,8 @@ def test_test_topology_manager_defaults_to_no_external_terminal():
 def test_start_suite_launches_selected_topology():
     text = (ROOT / "start_suite.sh").read_text(encoding="utf-8")
 
-    assert '"$PYTHON_BIN" -u start_controllers_test.py start -n' in text
+    assert '"$PYTHON_BIN" -u start_controllers.py start --ports "$CONTROLLER_PORTS"' in text
+    assert 'CONTROLLER_PORTS="${CONTROLLER_PORTS:-6654}"' in text
     assert 'GART_TOPOLOGY="${GART_TOPOLOGY:-nsfnet}"' in text
     assert "testbed/topology_launcher.py" in text
     assert "sudo" in text
