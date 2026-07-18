@@ -1,4 +1,4 @@
-"""Local and global rewards from Equations (2)-(4) of the GART paper."""
+"""Local and global rewards used by GART."""
 
 from dataclasses import dataclass
 import math

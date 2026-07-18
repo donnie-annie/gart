@@ -1,14 +1,9 @@
-"""Paper-aligned configuration for GART.
-
-Defaults mirror Table II and Table III of the GART paper.  Reward coefficients
-that are defined symbolically, but not assigned numerical values in the paper,
-remain explicit configuration fields instead of being hidden constants.
-"""
+"""Configuration defaults for GART training and inference."""
 
 from dataclasses import asdict, dataclass, fields
 
 
-PAPER_FLOW_PROFILES = {
+FLOW_PROFILES = {
     "EU": {"proportion": 0.05, "deadline_ms": 20.0},
     "MU": {"proportion": 0.15, "deadline_ms": 50.0},
     "LU": {"proportion": 0.70, "deadline_ms": 100.0},
@@ -18,7 +13,7 @@ PAPER_FLOW_PROFILES = {
 
 @dataclass(frozen=True)
 class GARTConfig:
-    """Model, PPO, and dual-reward settings from the paper."""
+    """Model, PPO, and dual-reward settings."""
 
     node_feature_dim: int = 3  # capacity, delay, loss
     flow_feature_dim: int = 2  # normalized destination, deadline
@@ -46,13 +41,12 @@ class GARTConfig:
     local_reward_weight: float = 0.5
     global_reward_weight: float = 0.5
 
-    # Eq. (2) coefficients. The paper leaves these values configurable.
+    # Local reward coefficients.
     loop_penalty: float = -1.0
     no_ack_penalty: float = -1.0
     residual_bandwidth_weight: float = 1.0
 
-    # Eq. (3) coefficients alpha, beta, gamma, and epsilon.  The paper does
-    # not publish their numerical values, so reproducible defaults are exposed.
+    # Global reward coefficients.
     deadline_reward_weight: float = 1.0
     throughput_reward_weight: float = 1.0
     loss_penalty_weight: float = 1.0

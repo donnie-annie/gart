@@ -333,7 +333,7 @@ class GARTPathService(object):
         else:
             self.model_kind = "gart"
 
-        # Load the new paper-aligned checkpoint when requested or auto-detected.
+        # Load the GART checkpoint when requested or auto-detected.
         if self.model_kind == "gart":
             if GARTActorCritic is None:
                 print("[模型] GART 运行时不可用: %s" % GART_IMPORT_ERROR)

@@ -1,4 +1,4 @@
-"""Paper evaluation topology catalog and path resolution helpers."""
+"""Topology catalog and path resolution helpers."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,7 +9,7 @@ DEFAULT_TOPOLOGY = "nsfnet"
 
 
 @dataclass(frozen=True)
-class PaperTopology:
+class TopologySpec:
     name: str
     nodes: int
     directed_links: int
@@ -31,21 +31,21 @@ class PaperTopology:
         return PROJECT_ROOT / "models" / self.name / "gart.pt"
 
 
-PAPER_TOPOLOGIES = {
+TOPOLOGIES = {
     item.name: item
     for item in (
-        PaperTopology("nsfnet", 14, 42),
-        PaperTopology("geant2", 23, 72),
-        PaperTopology("renater2010", 43, 112),
-        PaperTopology("synthetic300", 300, 1338),
+        TopologySpec("nsfnet", 14, 42),
+        TopologySpec("geant2", 23, 72),
+        TopologySpec("renater2010", 43, 112),
+        TopologySpec("synthetic300", 300, 1338),
     )
 }
 
 
-def get_paper_topology(name=DEFAULT_TOPOLOGY):
+def get_topology(name=DEFAULT_TOPOLOGY):
     key = (name or DEFAULT_TOPOLOGY).strip().lower()
     try:
-        return PAPER_TOPOLOGIES[key]
+        return TOPOLOGIES[key]
     except KeyError as exc:
-        choices = ", ".join(PAPER_TOPOLOGIES)
-        raise ValueError("unknown paper topology %r; choose one of: %s" % (name, choices)) from exc
+        choices = ", ".join(TOPOLOGIES)
+        raise ValueError("unknown topology %r; choose one of: %s" % (name, choices)) from exc

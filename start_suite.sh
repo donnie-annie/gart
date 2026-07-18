@@ -54,14 +54,14 @@ echo "Web UI: http://localhost:6009"
 echo "GART path_service: 127.0.0.1:8889"
 echo "routing algorithm: $ROUTING_ALGORITHM"
 echo "server_agent route mode: $SERVER_AGENT_ROUTE_MODE"
-echo "paper topology: $GART_TOPOLOGY ($TOPOLOGY_FILE)"
-echo "Starting paper-aligned Mininet topology in this terminal..."
+echo "topology: $GART_TOPOLOGY ($TOPOLOGY_FILE)"
+echo "Starting the Mininet topology in this terminal..."
 echo "Exit the Mininet CLI to stop the suite."
 
 if [ -n "$EXTERNAL_INTF" ]; then
-  sudo "$PYTHON_BIN" testbed/paper_topology.py --topology "$TOPOLOGY_FILE" \
+  sudo "$PYTHON_BIN" testbed/topology_launcher.py --topology "$TOPOLOGY_FILE" \
     --external-intf "$EXTERNAL_INTF" 2>&1 | tee logs/mininet_topology.log
 else
-  sudo "$PYTHON_BIN" testbed/paper_topology.py --topology "$TOPOLOGY_FILE" \
+  sudo "$PYTHON_BIN" testbed/topology_launcher.py --topology "$TOPOLOGY_FILE" \
     2>&1 | tee logs/mininet_topology.log
 fi

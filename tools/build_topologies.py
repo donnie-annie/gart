@@ -1,7 +1,7 @@
-"""Build the topology fixtures used by the GART paper evaluation.
+"""Build the benchmark topology fixtures used by GART.
 
 The generated Topology.txt format stores each physical link once. GART loads
-every physical link as two directed links, matching the manuscript.
+every physical link as two directed links.
 """
 
 from collections import deque
@@ -21,8 +21,8 @@ NSFNET_EDGES = [
 ]
 
 # The 23-node GEANT traffic-measurement snapshot contains 37 physical links.
-# The paper reports 36. Link (6, 19) is the snapshot's lowest-capacity link and
-# is not a bridge, so it is excluded here to reproduce the reported 72 arcs.
+# Link (6, 19) is the snapshot's lowest-capacity non-bridge edge and is excluded
+# to provide a stable 36-link fixture.
 GEANT2_CAPACITY_GROUPS = {
     100000: [
         (12, 22), (10, 12), (2, 12), (13, 17), (2, 4), (4, 16),
@@ -171,10 +171,7 @@ def _write_dataset(name, node_count, links, metadata, tm_seed):
         "bundled_traffic_matrix": {
             "model": "deterministic gravity fixture",
             "seed": tm_seed,
-            "note": (
-                "Runnable repository fixture. For exact NSFNet/GEANT2 paper reproduction, "
-                "replace it with a matrix extracted from the cited dataset archive."
-            ),
+            "note": "Deterministic runnable traffic fixture.",
         },
     })
     (directory / "metadata.json").write_text(
@@ -196,7 +193,7 @@ def _geant2_links():
 
 
 def _synthetic_links(node_count=300, physical_link_count=669, seed=1):
-    """Deterministic degree-preferential connected graph with paper counts."""
+    """Build a deterministic degree-preferential connected graph."""
     rng = random.Random(seed)
     pairs = {_normalize_edge((node, node % node_count + 1)) for node in range(1, node_count + 1)}
     degree = [0] * (node_count + 1)
@@ -225,8 +222,8 @@ def _synthetic_links(node_count=300, physical_link_count=669, seed=1):
 def main():
     _write_dataset(
         "nsfnet", 14, _nsfnet_links(), {
-            "paper_role": "real-world topology; convergence and static evaluation",
-            "paper_counts": {"nodes": 14, "directed_links": 42},
+            "benchmark_role": "small real-world topology",
+            "expected_counts": {"nodes": 14, "directed_links": 42},
             "topology_source": (
                 "https://knowledgedefinednetworking.org/data/datasets_v0/nsfnet.tar.gz"
             ),
@@ -234,12 +231,12 @@ def main():
                 "https://github.com/knowledgedefinednetworking/DRL-GNN/commit/"
                 "e3bc32bc6b65c1b6df570aee23bfe304fc4ebe0a"
             ),
-            "paper_traffic_matrix": "provided with the cited NSFNet dataset",
+            "traffic_matrix_source": "deterministic gravity fixture",
         }, tm_seed=1)
     _write_dataset(
         "geant2", 23, _geant2_links(), {
-            "paper_role": "real-world topology; convergence and static evaluation",
-            "paper_counts": {"nodes": 23, "directed_links": 72},
+            "benchmark_role": "medium real-world topology",
+            "expected_counts": {"nodes": 23, "directed_links": 72},
             "topology_source": (
                 "https://knowledgedefinednetworking.org/data/datasets_v0/geant2.tar.gz"
             ),
@@ -251,17 +248,14 @@ def main():
             "normalization": {
                 "source_physical_links": 37,
                 "excluded_edge": list(GEANT2_EXCLUDED_EDGE),
-                "reason": (
-                    "The public 23-node snapshot has 37 physical links; the paper reports "
-                    "36. The excluded 1.15-Mbps non-bridge edge matches the paper count."
-                ),
+                "reason": "The lowest-capacity non-bridge edge is omitted for a stable 36-link fixture.",
             },
-            "paper_traffic_matrix": "provided with the cited GEANT2 dataset",
+            "traffic_matrix_source": "deterministic gravity fixture",
         }, tm_seed=2)
     _write_dataset(
         "renater2010", 43, RENATER2010_LINKS, {
-            "paper_role": "real-world topology; static and Renater-like dynamic evaluation",
-            "paper_counts": {"nodes": 43, "directed_links": 112},
+            "benchmark_role": "medium real-world topology",
+            "expected_counts": {"nodes": 43, "directed_links": 112},
             "topology_source": (
                 "https://github.com/sk2/topologyzoo/blob/"
                 "e278b1bdaafea5dac33883bf9c97401db4cd7347/sources/Renater2010.graphml"
@@ -271,14 +265,14 @@ def main():
                 "4c2fd049450b98e8993d8a336be799df3df3769f/data/topologies/"
                 "Renater2010.graph"
             ),
-            "paper_traffic_matrix": "gravity model",
+            "traffic_matrix_source": "deterministic gravity fixture",
         }, tm_seed=3)
     synthetic_seed = 1
     synthetic_links = _synthetic_links(seed=synthetic_seed)
     _write_dataset(
         "synthetic300", 300, synthetic_links, {
-            "paper_role": "large-scale synthetic evaluation",
-            "paper_counts": {
+            "benchmark_role": "large synthetic topology",
+            "expected_counts": {
                 "nodes": 300,
                 "directed_links": 1338,
                 "average_out_degree": 4.46,
@@ -286,13 +280,9 @@ def main():
             "generator": {
                 "family": "degree-preferential connected generator",
                 "seed": synthetic_seed,
-                "note": (
-                    "The paper identifies TopoGen's degree-based generator but does not "
-                    "publish its generated instance, degree sequence, or seed. This fixed "
-                    "instance reproduces the published size and average out-degree."
-                ),
+                "note": "Fixed instance with stable size and average out-degree.",
             },
-            "paper_traffic_matrix": "gravity model",
+            "traffic_matrix_source": "deterministic gravity fixture",
         }, tm_seed=4)
 
 

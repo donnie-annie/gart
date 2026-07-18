@@ -18,14 +18,14 @@ from .ppo import GARTPPO
 from .rewards import DualRewardConfig
 from .rollout import GARTRolloutBuffer
 from .topology_env import TopologyRoutingEnv
-from .topologies import DEFAULT_TOPOLOGY, PAPER_TOPOLOGIES, get_paper_topology
+from .topologies import DEFAULT_TOPOLOGY, TOPOLOGIES, get_topology
 
 
 def parse_args(argv=None):
-    parser = argparse.ArgumentParser(description="Train the paper-aligned GART policy")
+    parser = argparse.ArgumentParser(description="Train the GART routing policy")
     parser.add_argument(
-        "--dataset", choices=tuple(PAPER_TOPOLOGIES), default=DEFAULT_TOPOLOGY,
-        help="paper evaluation topology (default: nsfnet)",
+        "--dataset", choices=tuple(TOPOLOGIES), default=DEFAULT_TOPOLOGY,
+        help="topology dataset (default: nsfnet)",
     )
     parser.add_argument("--topology", default=None,
                         help="custom Topology.txt override")
@@ -34,14 +34,13 @@ def parse_args(argv=None):
     parser.add_argument("--output", default=None,
                         help="checkpoint path; defaults to models/<dataset>/gart.pt")
     parser.add_argument("--interactions", type=int, default=100000,
-                        help="paper evaluation budget (default: 100000)")
+                        help="training interaction budget (default: 100000)")
     parser.add_argument("--traffic-intensity", type=float, choices=(0.3, 0.7), default=0.7)
     parser.add_argument("--seed", type=int, default=1)
-    parser.add_argument("--cuda", action="store_true",
-                        help="use CUDA; the paper's reference measurements use CPU")
+    parser.add_argument("--cuda", action="store_true", help="use CUDA when available")
     parser.add_argument("--resume", default=None)
     args = parser.parse_args(argv)
-    dataset = get_paper_topology(args.dataset)
+    dataset = get_topology(args.dataset)
     args.topology = args.topology or str(dataset.topology_path)
     args.traffic_matrix = args.traffic_matrix or str(dataset.traffic_matrix_path)
     args.output = args.output or str(dataset.default_model_path)

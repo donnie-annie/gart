@@ -8,7 +8,7 @@ offline training from the repository topology and traffic-matrix files.
 import copy
 import random
 
-from .config import PAPER_FLOW_PROFILES
+from .config import FLOW_PROFILES
 from .observation import (
     GARTTopologyIndex,
     build_gart_observation,
@@ -67,10 +67,10 @@ class TopologyRoutingEnv:
             weights=[item[2] for item in self.traffic_pairs],
             k=1,
         )[0]
-        labels = list(PAPER_FLOW_PROFILES)
+        labels = list(FLOW_PROFILES)
         flow_type = self.random.choices(
             labels,
-            weights=[PAPER_FLOW_PROFILES[label]["proportion"] for label in labels],
+            weights=[FLOW_PROFILES[label]["proportion"] for label in labels],
             k=1,
         )[0]
         demand_by_type = {"EU": 100.0, "MU": 1500.0, "LU": 500.0, "RT": 1500.0}
@@ -87,11 +87,11 @@ class TopologyRoutingEnv:
 
     def reset(self):
         self._reset_link_state()
-        # Exponential inter-arrival times produce the paper's Poisson flow process.
+        # Exponential inter-arrival times produce a Poisson flow process.
         self.simulation_time += self.random.expovariate(
             max(self.traffic_intensity, 1e-6))
         self.source, self.destination, self.flow_type, self.required_throughput = self._sample_flow()
-        self.deadline_ms = PAPER_FLOW_PROFILES[self.flow_type]["deadline_ms"]
+        self.deadline_ms = FLOW_PROFILES[self.flow_type]["deadline_ms"]
         self.current = self.source
         self.visited = [self.source]
         self.path = [self.source]

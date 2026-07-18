@@ -31,12 +31,12 @@ def test_test_topology_manager_defaults_to_no_external_terminal():
     assert manager.controller_log_path(6654) == ROOT / "logs" / "ryu_controller_6654.log"
 
 
-def test_start_suite_launches_paper_topology():
+def test_start_suite_launches_selected_topology():
     text = (ROOT / "start_suite.sh").read_text(encoding="utf-8")
 
     assert '"$PYTHON_BIN" -u start_controllers_test.py start -n' in text
     assert 'GART_TOPOLOGY="${GART_TOPOLOGY:-nsfnet}"' in text
-    assert "testbed/paper_topology.py" in text
+    assert "testbed/topology_launcher.py" in text
     assert "sudo" in text
 
 
@@ -54,12 +54,12 @@ def test_start_suite_supports_optional_external_interface():
 
     assert 'EXTERNAL_INTF="${1:-}"' in text
     assert 'EXTERNAL_LINK_PORTS="${EXTERNAL_LINK_PORTS:-1:20}"' in text
-    assert 'sudo "$PYTHON_BIN" testbed/paper_topology.py --topology "$TOPOLOGY_FILE"' in text
+    assert 'sudo "$PYTHON_BIN" testbed/topology_launcher.py --topology "$TOPOLOGY_FILE"' in text
     assert '--external-intf "$EXTERNAL_INTF"' in text
 
 
 def test_mininet_launcher_reads_repository_topology_fixture():
-    text = (ROOT / "testbed" / "paper_topology.py").read_text(encoding="utf-8")
+    text = (ROOT / "testbed" / "topology_launcher.py").read_text(encoding="utf-8")
 
     assert "def load_links(" in text
     assert '"topology" / "nsfnet" / "Topology.txt"' in text
@@ -93,4 +93,4 @@ def test_standalone_metadata_is_packaged():
         assert package in requirements
     assert "__pycache__/" in gitignore
     assert "logs/" in gitignore
-    assert "GART is the main" in readme
+    assert "standalone decentralized routing project" in readme

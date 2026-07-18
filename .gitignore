@@ -4,9 +4,12 @@ logs/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.uv-cache/
+.uv-python/
 .venv/
 venv/
 env/
 .idea/
 .vscode/
+/drl-or-s/
 models/*/gart.pt
