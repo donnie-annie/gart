@@ -1,7 +1,6 @@
 # GART 运行与测试说明
 
 GART 默认提供 NSFNet、GEANT2、Renater 2010 和 Synthetic-300 四组拓扑。
-历史 Military 47 节点拓扑仅保留在 `baseline/drl-or-s/`，不会作为默认配置。
 
 ## 1. 拓扑数据
 
@@ -81,15 +80,6 @@ python3 -m gart.path_service \
   --topo nsfnet \
   --algorithm gart \
   --model models/nsfnet/gart.pt
-```
-
-DRL-OR-S/Military 仅在 baseline 模式使用：
-
-```bash
-python3 -m gart.path_service \
-  --topo Military \
-  --algorithm baseline \
-  --model baseline/drl-or-s/model/Military_mininet
 ```
 
 ## 6. 验证

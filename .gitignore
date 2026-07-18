@@ -11,5 +11,4 @@ venv/
 env/
 .idea/
 .vscode/
-/drl-or-s/
 models/*/gart.pt

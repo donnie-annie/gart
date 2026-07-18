@@ -1,8 +1,6 @@
 # GART package
 
 This package contains the trainable GART policy and its online next-hop service.
-The legacy implementation is isolated under `baseline/drl-or-s/` and is loaded
-only when baseline mode is selected explicitly.
 
 ## Component map
 

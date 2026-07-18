@@ -91,7 +91,6 @@ def test_training_defaults_follow_nsfnet_catalog():
     assert 'default=DEFAULT_TOPOLOGY' in train_source
 
 
-def test_military_assets_exist_only_under_baseline():
+def test_legacy_military_assets_are_absent():
     assert not (ROOT / "topology" / "Military").exists()
-    assert (ROOT / "baseline" / "drl-or-s" / "topology" / "Military" / "Topology.txt").exists()
     assert not (ROOT / "models" / "GART_Military").exists()
