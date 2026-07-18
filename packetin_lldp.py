@@ -1,12 +1,4 @@
-"""
-该文件从原始 controller 的 PacketIn 处理中拆分了 LLDP 相关功能。
-负责 LLDP 报文解析、时延上报、域间链路记录更新。
-
-函数作用：
-- handle_lldp_packet_in(app, ev)：
-  处理 LLDP PacketIn，提取源/目的交换机与端口信息，向根控上报测量数据，
-  并在需要时更新 topo_access_link 与本地图结构。
-"""
+"""LLDP parsing, delay reporting, and inter-domain link updates."""
 
 import time
 
@@ -23,12 +15,7 @@ def parse_lldp_source(data):
 
 
 def handle_lldp_packet_in(app, ev):
-    """
-    LLDP PacketIn 处理：
-    - 解析LLDP
-    - 上报根控计算时延
-    - 维护域间接入链路 topo_access_link
-    """
+    """Process one LLDP PacketIn event."""
     try:
         msg = ev.msg
         datapath = msg.datapath
@@ -78,8 +65,6 @@ def handle_lldp_packet_in(app, ev):
                         receive_time=now_time
                     )
                 else:
-                    # 该场景常见于跨控制器链路：本控制器没有源交换机端口的 PortData。
-                    # 跳过本次时延上报，避免 server_agent 返回“send_time missing”告警刷屏。
                     app.logger.debug(
                         "LLDP源端口时间戳缺失，跳过上报: src_dpid=%s, src_port=%s, dst_dpid=%s, dst_inport=%s",
                         src_dpid, src_port_no, dst_dpid, dst_inport

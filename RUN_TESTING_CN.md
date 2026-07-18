@@ -66,6 +66,8 @@ GART_TOPOLOGY=renater2010 ./start_suite.sh
 
 默认模型路径为 `models/<拓扑名>/gart.pt`。模型不存在时，路径服务会回退到
 Dijkstra 并记录原因。
+通用 Mininet 启动器默认连接 Ryu 端口 6654；自定义测试床可通过
+`CONTROLLER_PORTS=6654,6655` 指定多个控制器端口。
 
 物理网卡混合模式：
 

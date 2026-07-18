@@ -1,467 +1,188 @@
-#!/usr/bin/env python
-"""
-启动多个Ryu控制器的脚本
-用于启动6个域的控制器，分别监听端口6654-6659
-每个控制器在独立的终端窗口中运行
-"""
+#!/usr/bin/env python3
+"""Launch and manage the Ryu controller processes used by GART."""
 
-import subprocess
-import sys
-import time
-import signal
+import argparse
+import json
 import os
-import shutil
 from pathlib import Path
+import signal
+import subprocess
+import time
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+DEFAULT_PORTS = (6654,)
+DEFAULT_PID_FILE = Path("/tmp/gart_ryu_controllers.json")
+
+
+def parse_ports(raw):
+    ports = tuple(dict.fromkeys(int(item.strip()) for item in raw.split(",") if item.strip()))
+    if not ports or any(port < 1 or port > 65535 for port in ports):
+        raise ValueError("ports must contain valid TCP port numbers")
+    return ports
 
 
 class ControllerManager:
-    """控制器管理器"""
-    
-    def __init__(self, base_port=6654, num_controllers=6, controller_app='controller.py', use_terminal=True, log_dir=None):
-        """
-        初始化控制器管理器
-        
-        Args:
-            base_port: 起始端口号（默认6654）
-            num_controllers: 控制器数量（默认6个）
-            controller_app: Ryu应用路径
-            use_terminal: 是否在新终端窗口中运行（默认True）
-        """
-        self.base_port = base_port
-        self.num_controllers = num_controllers
-        self.controller_app = controller_app
-        self.processes = {}  # {port: process}
-        self.pid_file = Path('/tmp/ryu_controllers.pid')
-        self.use_terminal = use_terminal
-        self.log_dir = Path(log_dir) if log_dir is not None else Path(__file__).resolve().parent / 'logs'
-        self.terminal_cmd = self._detect_terminal()
+    def __init__(self, ports=DEFAULT_PORTS, controller_app="controller.py",
+                 log_dir=None, pid_file=DEFAULT_PID_FILE):
+        self.ports = tuple(ports)
+        self.controller_app = Path(controller_app)
+        if not self.controller_app.is_absolute():
+            self.controller_app = PROJECT_ROOT / self.controller_app
+        self.log_dir = Path(log_dir) if log_dir else PROJECT_ROOT / "logs"
+        self.pid_file = Path(pid_file)
+        self.processes = {}
 
     def controller_log_path(self, port):
-        return self.log_dir / f'ryu_controller_{port}.log'
-    
-    def _detect_terminal(self):
-        """检测可用的终端模拟器"""
-        terminals = [
-            ('gnome-terminal', ['--', 'bash', '-c']),
-            ('xterm', ['-e']),
-            ('konsole', ['-e']),
-            ('terminator', ['-e']),
-            ('xfce4-terminal', ['-e']),
-            ('mate-terminal', ['-e']),
-            ('lxterminal', ['-e']),
-        ]
-        
-        for term, _ in terminals:
-            if shutil.which(term):
-                return (term, terminals[terminals.index((term, _))][1])
-        
-        return None
-        
-    def start_controller(self, port):
-        """
-        启动单个控制器
-        
-        Args:
-            port: 控制器监听端口
-            
-        Returns:
-            subprocess.Popen对象
-        """
-        # 获取脚本所在目录的绝对路径
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        controller_path = os.path.join(script_dir, self.controller_app)
-        
-        # 检查文件是否存在
-        if not os.path.exists(controller_path):
-            print(f'错误: 找不到控制器文件: {controller_path}')
-            return None
-        
-        cmd = [
-            'ryu-manager',
-            '--observe-links',
-            '--ofp-tcp-listen-port', str(port),
-            controller_path
-        ]
-        
-        print(f'启动控制器 (端口 {port})...')
-        print(f'命令: {" ".join(cmd)}')
-        
+        return self.log_dir / ("ryu_controller_%d.log" % port)
+
+    @staticmethod
+    def _is_running(pid):
         try:
-            if self.use_terminal and self.terminal_cmd:
-                # 在新终端窗口中启动
-                term_name, term_option = self.terminal_cmd
-                title = f'Ryu Controller - Port {port}'
-                
-                # 构建终端命令
-                if term_name == 'gnome-terminal':
-                    # gnome-terminal 使用 -- 分隔选项和命令
-                    terminal_cmd = [
-                        term_name,
-                        '--title', title,
-                        '--', 'bash', '-c',
-                        ' '.join(cmd) + '; echo ""; echo "按 Enter 键关闭此窗口..."; read'
-                    ]
-                elif term_name == 'xterm':
-                    terminal_cmd = [
-                        term_name,
-                        '-T', title,
-                        '-e', 'bash', '-c',
-                        ' '.join(cmd) + '; echo ""; echo "按 Enter 键关闭此窗口..."; read'
-                    ]
-                elif term_name == 'konsole':
-                    terminal_cmd = [
-                        term_name,
-                        '--title', title,
-                        '-e', 'bash', '-c',
-                        ' '.join(cmd) + '; echo ""; echo "按 Enter 键关闭此窗口..."; read'
-                    ]
-                elif term_name == 'terminator':
-                    terminal_cmd = [
-                        term_name,
-                        '--title', title,
-                        '-e', 'bash', '-c',
-                        ' '.join(cmd) + '; echo ""; echo "按 Enter 键关闭此窗口..."; read'
-                    ]
-                elif term_name == 'xfce4-terminal':
-                    terminal_cmd = [
-                        term_name,
-                        '--title', title,
-                        '-e', 'bash', '-c',
-                        ' '.join(cmd) + '; echo ""; echo "按 Enter 键关闭此窗口..."; read'
-                    ]
-                elif term_name == 'mate-terminal':
-                    terminal_cmd = [
-                        term_name,
-                        '--title', title,
-                        '-e', 'bash', '-c',
-                        ' '.join(cmd) + '; echo ""; echo "按 Enter 键关闭此窗口..."; read'
-                    ]
-                elif term_name == 'lxterminal':
-                    terminal_cmd = [
-                        term_name,
-                        '--title', title,
-                        '-e', 'bash', '-c',
-                        ' '.join(cmd) + '; echo ""; echo "按 Enter 键关闭此窗口..."; read'
-                    ]
-                else:
-                    terminal_cmd = [
-                        term_name,
-                        *term_option,
-                        ' '.join(cmd) + '; echo ""; echo "按 Enter 键关闭此窗口..."; read'
-                    ]
-                
-                print(f'  在新终端窗口中启动: {term_name}')
-                process = subprocess.Popen(
-                    terminal_cmd,
-                    preexec_fn=os.setsid  # 创建新的进程组
-                )
-                
-                # 等待一下，检查进程是否成功启动
-                time.sleep(1)
-                if process.poll() is not None:
-                    print(f'错误: 控制器 (端口 {port}) 启动失败')
-                    return None
-                
-                print(f'✓ 控制器 (端口 {port}) 已在新终端窗口中启动，PID: {process.pid}')
-                return process
-            else:
-                # 在后台启动，重定向输出到日志文件
-                if not self.use_terminal:
-                    print(f'  在后台启动（日志输出到文件）')
-                else:
-                    print(f'  警告: 未找到终端模拟器，将在后台启动')
-                
-                self.log_dir.mkdir(parents=True, exist_ok=True)
-                log_path = self.controller_log_path(port)
-                log_file = open(log_path, 'w')
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=log_file,
-                    stderr=subprocess.STDOUT,
-                    preexec_fn=os.setsid  # 创建新的进程组
-                )
-                
-                # 等待一下，检查进程是否成功启动
-                time.sleep(1)
-                if process.poll() is not None:
-                    # 进程已经退出，说明启动失败
-                    log_file.close()
-                    print(f'错误: 控制器 (端口 {port}) 启动失败')
-                    return None
-                
-                print(f'✓ 控制器 (端口 {port}) 已启动，PID: {process.pid}')
-                print(f'  日志文件: {log_path}')
-                return process
-            
-        except Exception as e:
-            print(f'错误: 启动控制器 (端口 {port}) 时发生异常: {e}')
-            return None
-    
-    def start_all(self):
-        """启动所有控制器"""
-        print('=' * 60)
-        print('启动Ryu控制器')
-        print('=' * 60)
-        print(f'控制器数量: {self.num_controllers}')
-        print(f'端口范围: {self.base_port} - {self.base_port + self.num_controllers - 1}')
-        print(f'应用: {self.controller_app}')
-        if self.use_terminal:
-            if self.terminal_cmd:
-                print(f'终端: {self.terminal_cmd[0]} (每个控制器在独立终端中运行)')
-            else:
-                print('终端: 未找到终端模拟器，将在后台运行')
-        else:
-            print('模式: 后台运行（日志输出到文件）')
-        print('=' * 60)
-        print()
-        
-        failed_ports = []
-        
-        for i in range(self.num_controllers):
-            port = self.base_port + i
-            process = self.start_controller(port)
-            
-            if process:
-                self.processes[port] = process
-            else:
-                failed_ports.append(port)
-            
-            # 稍微延迟，避免同时启动造成资源竞争
-            time.sleep(0.8)  # 增加延迟，确保终端窗口有时间打开
-        
-        # 保存PID到文件
-        self.save_pids()
-        
-        print()
-        print('=' * 60)
-        if failed_ports:
-            print(f'警告: {len(failed_ports)} 个控制器启动失败: {failed_ports}')
-        else:
-            print(f'✓ 所有 {self.num_controllers} 个控制器已成功启动')
-            if self.use_terminal and self.terminal_cmd:
-                print(f'每个控制器都在独立的终端窗口中运行')
-        print('=' * 60)
-        print()
-        print('控制器状态:')
-        self.show_status()
-        print()
-        if self.use_terminal and self.terminal_cmd:
-            print('提示:')
-            print('  - 每个控制器在独立的终端窗口中运行')
-            print('  - 日志直接显示在对应的终端窗口中')
-            print('  - 关闭终端窗口将停止对应的控制器')
-            print('  - 停止所有控制器: python3 start_controllers.py stop')
-            print('  - 查看状态: python3 start_controllers.py status')
-        else:
-            print('提示:')
-            print(f'  - 查看日志: tail -f {self.log_dir}/ryu_controller_<PORT>.log')
-            print('  - 停止所有控制器: python3 start_controllers.py stop')
-            print('  - 查看状态: python3 start_controllers.py status')
-        print()
-    
-    def stop_controller(self, port):
-        """停止单个控制器"""
-        if port in self.processes:
-            process = self.processes[port]
-            try:
-                # 终止整个进程组
-                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-                process.wait(timeout=5)
-                print(f'✓ 控制器 (端口 {port}) 已停止')
-                del self.processes[port]
-                return True
-            except subprocess.TimeoutExpired:
-                # 如果正常终止失败，强制终止
-                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-                process.wait()
-                print(f'✓ 控制器 (端口 {port}) 已强制停止')
-                del self.processes[port]
-                return True
-            except ProcessLookupError:
-                # 进程已经不存在
-                print(f'控制器 (端口 {port}) 已经停止')
-                del self.processes[port]
-                return True
-            except Exception as e:
-                print(f'错误: 停止控制器 (端口 {port}) 时发生异常: {e}')
-                return False
-        else:
-            print(f'控制器 (端口 {port}) 未运行')
+            os.kill(pid, 0)
+        except (OSError, ProcessLookupError):
             return False
-    
-    def stop_all(self):
-        """停止所有控制器"""
-        print('=' * 60)
-        print('停止Ryu控制器')
-        print('=' * 60)
-        
-        # 尝试从PID文件加载进程信息
-        self.load_pids()
-        
-        if not self.processes:
-            print('没有运行中的控制器')
-            return
-        
-        print(f'正在停止 {len(self.processes)} 个控制器...')
-        print()
-        
-        for port in list(self.processes.keys()):
-            self.stop_controller(port)
-            time.sleep(0.2)
-        
-        # 清理PID文件
-        if self.pid_file.exists():
-            self.pid_file.unlink()
-        
-        print()
-        print('=' * 60)
-        print('✓ 所有控制器已停止')
-        print('=' * 60)
-    
-    def show_status(self):
-        """显示所有控制器的状态"""
-        # 尝试从PID文件加载进程信息
-        self.load_pids()
-        
-        if not self.processes:
-            print('没有运行中的控制器')
-            return
-        
-        print()
-        print('端口\tPID\t状态\t\t日志文件')
-        print('-' * 60)
-        
-        for port in sorted(self.processes.keys()):
-            process = self.processes[port]
-            try:
-                # 检查进程是否还在运行
-                process.poll()
-                if process.returncode is None:
-                    status = '运行中'
-                else:
-                    status = f'已退出 (code: {process.returncode})'
-            except:
-                status = '未知'
-            
-            log_file = self.controller_log_path(port)
-            print(f'{port}\t{process.pid}\t{status}\t{log_file}')
-    
-    def save_pids(self):
-        """保存PID到文件"""
-        try:
-            with open(self.pid_file, 'w') as f:
-                for port, process in self.processes.items():
-                    f.write(f'{port}:{process.pid}\n')
-        except Exception as e:
-            print(f'警告: 保存PID文件失败: {e}')
-    
-    def load_pids(self):
-        """从PID文件加载进程信息"""
+        return True
+
+    def _load_pids(self):
         if not self.pid_file.exists():
-            return
-        
+            return {}
         try:
-            with open(self.pid_file, 'r') as f:
-                for line in f:
-                    line = line.strip()
-                    if ':' in line:
-                        port_str, pid_str = line.split(':', 1)
-                        port = int(port_str)
-                        pid = int(pid_str)
-                        
-                        # 检查进程是否还在运行
-                        try:
-                            os.kill(pid, 0)  # 发送信号0检查进程是否存在
-                            # 创建Popen对象（虽然不能完全恢复，但可以用于停止）
-                            process = subprocess.Popen(['echo'], stdout=subprocess.PIPE)
-                            process.pid = pid
-                            self.processes[port] = process
-                        except ProcessLookupError:
-                            # 进程不存在，跳过
-                            pass
-                        except PermissionError:
-                            # 没有权限，跳过
-                            pass
-        except Exception as e:
-            print(f'警告: 加载PID文件失败: {e}')
+            payload = json.loads(self.pid_file.read_text(encoding="utf-8"))
+            return {int(port): int(pid) for port, pid in payload.items()}
+        except (OSError, ValueError, TypeError):
+            return {}
 
+    def _save_pids(self):
+        self.pid_file.write_text(
+            json.dumps({port: process.pid for port, process in self.processes.items()}),
+            encoding="utf-8",
+        )
 
-def main():
-    """主函数"""
-    if len(sys.argv) > 1:
-        command = sys.argv[1].lower()
-    else:
-        command = 'start'
-    
-    # 检查是否禁用终端模式
-    use_terminal = True
-    if '--no-terminal' in sys.argv or '-n' in sys.argv:
-        use_terminal = False
-        if '--no-terminal' in sys.argv:
-            sys.argv.remove('--no-terminal')
-        if '-n' in sys.argv:
-            sys.argv.remove('-n')
-    
-    manager = ControllerManager(
-        base_port=6654,
-        num_controllers=6,
-        controller_app='controller.py',
-        use_terminal=use_terminal
-    )
-    
-    if command == 'start':
-        manager.start_all()
-        # 保持脚本运行，直到用户中断
+    def start_controller(self, port):
+        if not self.controller_app.is_file():
+            raise FileNotFoundError("controller application not found: %s" % self.controller_app)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        command = [
+            "ryu-manager",
+            "--observe-links",
+            "--ofp-tcp-listen-port",
+            str(port),
+            str(self.controller_app),
+        ]
+        with self.controller_log_path(port).open("w", encoding="utf-8") as log_file:
+            process = subprocess.Popen(
+                command,
+                cwd=str(PROJECT_ROOT),
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        time.sleep(1)
+        if process.poll() is not None:
+            raise RuntimeError(
+                "controller on port %d exited during startup; see %s"
+                % (port, self.controller_log_path(port))
+            )
+        return process
+
+    def start_all(self):
+        active = {
+            port: pid for port, pid in self._load_pids().items()
+            if self._is_running(pid)
+        }
+        if active:
+            raise RuntimeError("controllers already running: %s" % active)
         try:
-            print('控制器正在运行中... (按 Ctrl+C 停止所有控制器)')
-            while True:
+            for port in self.ports:
+                self.processes[port] = self.start_controller(port)
+        except Exception:
+            self.stop_all()
+            raise
+        self._save_pids()
+
+    def stop_all(self, timeout=5.0):
+        pids = self._load_pids()
+        pids.update({port: process.pid for port, process in self.processes.items()})
+        for pid in pids.values():
+            if not self._is_running(pid):
+                continue
+            try:
+                os.killpg(os.getpgid(pid), signal.SIGTERM)
+            except ProcessLookupError:
+                continue
+
+        deadline = time.time() + timeout
+        while time.time() < deadline and any(self._is_running(pid) for pid in pids.values()):
+            time.sleep(0.1)
+
+        for pid in pids.values():
+            if self._is_running(pid):
+                try:
+                    os.killpg(os.getpgid(pid), signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        self.pid_file.unlink(missing_ok=True)
+        self.processes.clear()
+
+    def statuses(self):
+        return {
+            port: ("running" if self._is_running(pid) else "stopped")
+            for port, pid in self._load_pids().items()
+        }
+
+    def monitor(self):
+        while self.processes:
+            exited = [port for port, process in self.processes.items()
+                      if process.poll() is not None]
+            for port in exited:
+                del self.processes[port]
+            if self.processes:
                 time.sleep(1)
-                # 检查是否有进程退出
-                for port in list(manager.processes.keys()):
-                    process = manager.processes[port]
-                    if process.poll() is not None:
-                        print(f'警告: 控制器 (端口 {port}) 意外退出')
-                        del manager.processes[port]
-        except KeyboardInterrupt:
-            print('\n\n收到中断信号，正在停止所有控制器...')
-            manager.stop_all()
-    
-    elif command == 'stop':
-        manager.stop_all()
-    
-    elif command == 'status':
-        print('=' * 60)
-        print('Ryu控制器状态')
-        print('=' * 60)
-        manager.show_status()
-        print()
-    
-    elif command == 'restart':
-        print('重启所有控制器...')
-        manager.stop_all()
-        time.sleep(2)
-        manager.start_all()
-    
-    else:
-        print(f'未知命令: {command}')
-        print()
-        print('用法:')
-        print('  python3 start_controllers.py [start|stop|status|restart] [--no-terminal|-n]')
-        print()
-        print('命令说明:')
-        print('  start   - 启动所有控制器（默认）')
-        print('  stop    - 停止所有控制器')
-        print('  status  - 查看控制器状态')
-        print('  restart - 重启所有控制器')
-        print()
-        print('选项:')
-        print('  --no-terminal, -n  - 在后台运行，不打开终端窗口（日志输出到文件）')
-        print()
-        print('示例:')
-        print('  python3 start_controllers.py start        # 在终端窗口中启动')
-        print('  python3 start_controllers.py start -n     # 在后台启动')
-        sys.exit(1)
 
 
-if __name__ == '__main__':
+def build_parser():
+    parser = argparse.ArgumentParser(description="Manage GART Ryu controllers")
+    parser.add_argument("command", choices=("start", "stop", "status", "restart"),
+                        nargs="?", default="start")
+    parser.add_argument("--ports", default=os.environ.get("CONTROLLER_PORTS", "6654"))
+    parser.add_argument("--controller-app", default="controller.py")
+    parser.add_argument("--log-dir", default=str(PROJECT_ROOT / "logs"))
+    parser.add_argument("--pid-file", default=str(DEFAULT_PID_FILE))
+    return parser
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    manager = ControllerManager(
+        ports=parse_ports(args.ports),
+        controller_app=args.controller_app,
+        log_dir=args.log_dir,
+        pid_file=args.pid_file,
+    )
+
+    if args.command == "stop":
+        manager.stop_all()
+        return
+    if args.command == "status":
+        statuses = manager.statuses()
+        if not statuses:
+            print("No controllers are registered.")
+        for port, status in sorted(statuses.items()):
+            print("%d: %s" % (port, status))
+        return
+    if args.command == "restart":
+        manager.stop_all()
+
+    manager.start_all()
+    print("Controllers started on ports: %s" % ", ".join(map(str, manager.ports)))
+    try:
+        manager.monitor()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        manager.stop_all()
+
+
+if __name__ == "__main__":
     main()

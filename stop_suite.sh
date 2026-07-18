@@ -2,11 +2,10 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 
-if [ -f start_controllers_test.py ]; then
-  python3 start_controllers_test.py stop || true
-elif [ -f start_controllers.py ]; then
-  python3 start_controllers.py stop || true
+if [ -f start_controllers.py ]; then
+  "$PYTHON_BIN" start_controllers.py stop || true
 fi
 
 if [ -d logs ]; then

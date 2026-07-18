@@ -1,12 +1,4 @@
-"""
-该文件从原始 server_agent 大文件中拆分了 Flask Web/API 路由功能，
-将页面与 REST 接口注册集中管理，入口文件仅保留服务组装与启动。
-
-函数作用：
-- register_web_api_routes(app, get_server_agent)：
-  向 Flask 应用注册首页与各 API 路由，并通过 get_server_agent() 获取
-  当前根控实例来访问拓扑、图与统计数据。
-"""
+"""Flask routes for the controller dashboard and REST API."""
 
 import json
 import logging
@@ -20,7 +12,7 @@ logger = logging.getLogger("server_agent")
 
 
 def _normalize_switch_id(raw):
-    """尽量将交换机 ID 归一化为 int，失败则返回原值。"""
+    """Normalize a switch ID to an integer when possible."""
     if raw is None:
         return None
     if isinstance(raw, int):
@@ -32,7 +24,7 @@ def _normalize_switch_id(raw):
 
 
 def _extract_flow_payload(data):
-    """提取并校验手动流表下发参数。"""
+    """Validate and normalize a manual flow request."""
     if not isinstance(data, dict):
         return None, "请求体必须是 JSON 对象"
 
@@ -82,7 +74,7 @@ def _extract_flow_payload(data):
 
 
 def _safe_switch_key(switch_id):
-    """统一用于图节点索引的 key。"""
+    """Return a stable graph key for an optional switch ID."""
     return switch_id if switch_id is not None else ''
 
 
@@ -101,7 +93,7 @@ def _prepare_node_data_for_graph(node_data, include_flows=False):
 
 
 def register_web_api_routes(app, get_server_agent):
-    """注册 Flask API 路由。"""
+    """Register dashboard and API routes on a Flask application."""
 
     @app.route('/')
     def index():

@@ -1,9 +1,4 @@
-"""
-该文件从 server_agent.py 中拆分了 Web 可视化页面的大段 HTML/JS/CSS 模板。
-
-函数作用：
-- get_web_ui_html()：返回前端页面源码字符串，供 Flask 首页接口直接响应。
-"""
+"""Embedded HTML, CSS, and JavaScript for the controller dashboard."""
 
 
 def get_web_ui_html():
