@@ -22,10 +22,13 @@ selected explicitly.
 | Dynamic topology training backend | `topology_env.py` |
 | Decentralized online next-hop execution | `path_service.py` |
 
-The model uses two GAT layers. Each layer has four attention heads with a
-16-dimensional output per head. Actor and Critic MLPs both use hidden widths
-64/64. Embeddings are L2-normalized after every GAT layer, and invalid or
-already-visited next hops are masked before sampling.
+The model uses two GAT layers and materializes only the current agent's induced
+two-hop subgraph.  A reusable topology index keeps state construction local,
+and variable neighborhood sizes are padded only to the largest local graph in
+each PPO rollout.  Each GAT layer has four attention heads with a 16-dimensional
+output per head. Actor and Critic MLPs both use hidden widths 64/64. Embeddings
+are L2-normalized after every GAT layer, and invalid or already-visited next
+hops are masked before sampling.
 
 The global reward is attached only to the terminal transition. GAE then
 propagates its effect to earlier per-hop decisions, matching the manuscript.

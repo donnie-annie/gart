@@ -69,6 +69,52 @@ def normalize_edge(edge):
     }
 
 
+class GARTTopologyIndex:
+    """Index raw links once and expose an agent's bounded local subgraph.
+
+    Link dictionaries are retained by reference so dynamic bandwidth and link
+    status changes remain visible without rebuilding a global graph for every
+    next-hop decision.
+    """
+
+    def __init__(self, topo_edges):
+        self._outgoing = {}
+        self.node_ids = set()
+        for raw_edge in topo_edges or []:
+            edge = normalize_edge(raw_edge)
+            self.node_ids.update((edge["src"], edge["dst"]))
+            self._outgoing.setdefault(edge["src"], []).append(raw_edge)
+
+    def _normalized_outgoing(self, node_id):
+        return [
+            normalize_edge(edge)
+            for edge in self._outgoing.get(int(node_id), ())
+        ]
+
+    def local_view(self, current_node, hops):
+        """Return the enabled induced subgraph within ``hops`` of the agent."""
+        current_node = int(current_node)
+        local_nodes = {current_node}
+        frontier = {current_node}
+        for _ in range(max(int(hops), 1)):
+            next_frontier = set()
+            for node_id in frontier:
+                for edge in self._normalized_outgoing(node_id):
+                    if edge["enabled"] and edge["dst"] not in local_nodes:
+                        next_frontier.add(edge["dst"])
+            if not next_frontier:
+                break
+            local_nodes.update(next_frontier)
+            frontier = next_frontier
+
+        local_edges = []
+        for node_id in local_nodes:
+            for edge in self._normalized_outgoing(node_id):
+                if edge["dst"] in local_nodes:
+                    local_edges.append(edge)
+        return sorted(local_nodes), local_edges
+
+
 @dataclass
 class GARTObservation:
     node_ids: list
@@ -94,19 +140,23 @@ class GARTObservation:
 
 def build_gart_observation(topo_edges, current_node, destination_node,
                            visited_nodes=None, deadline_ms=200.0,
-                           max_deadline_ms=200.0):
+                           max_deadline_ms=200.0, neighborhood_hops=2):
     """Create capacity/delay/loss node features and a valid-next-hop mask.
 
-    The tensors contain the graph for efficient batched computation, while a
-    two-layer GAT means the current node embedding only receives information
-    from its bounded two-hop receptive field, as required by the paper.
+    Only the induced subgraph within ``neighborhood_hops`` of the current
+    agent is materialized.  With the paper's two GAT layers this is the bounded
+    two-hop receptive field described by Algorithm 1 and Equations (5)-(7).
     """
-    edges = [normalize_edge(edge) for edge in (topo_edges or [])]
-    node_ids = {int(current_node), int(destination_node)}
-    for edge in edges:
-        node_ids.add(edge["src"])
-        node_ids.add(edge["dst"])
-    node_ids = sorted(node_ids)
+    topology = (
+        topo_edges
+        if isinstance(topo_edges, GARTTopologyIndex)
+        else GARTTopologyIndex(topo_edges)
+    )
+    current_node = int(current_node)
+    destination_node = int(destination_node)
+    global_node_ids = sorted(
+        set(topology.node_ids) | {current_node, destination_node})
+    node_ids, edges = topology.local_view(current_node, neighborhood_hops)
     index = {node_id: position for position, node_id in enumerate(node_ids)}
     size = len(node_ids)
 
@@ -159,8 +209,12 @@ def build_gart_observation(topo_edges, current_node, destination_node,
         for neighbor in available_neighbors:
             action_mask[index[neighbor]] = True
 
-    destination_index = index[int(destination_node)]
-    destination_feature = destination_index / float(max(size - 1, 1))
+    # The destination is a flow requirement and may be outside the bounded
+    # local subgraph.  Encode its rank in the global topology without adding
+    # that remote node to the GAT input.
+    destination_index = global_node_ids.index(destination_node)
+    destination_feature = destination_index / float(
+        max(len(global_node_ids) - 1, 1))
     deadline_feature = max(0.0, min(_finite(deadline_ms) / max(_finite(max_deadline_ms, 200.0), 1e-12), 1.0))
 
     return GARTObservation(

@@ -36,6 +36,11 @@ in metadata.
 | `baseline/drl-or-s/` | Legacy DRL-OR-S code, Military topology and checkpoints |
 | `tests/` | Unit, integration and paper-alignment tests |
 
+Each routing decision builds the current agent's two-hop induced subgraph,
+matching the bounded receptive field formed by the paper's two GAT layers.
+Remote destinations remain flow features and are not inserted into the local
+GAT graph. PPO pads variable local graphs only within each rollout batch.
+
 ## Install
 
 ```bash

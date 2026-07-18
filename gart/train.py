@@ -60,6 +60,7 @@ def train(args):
         traffic_intensity=args.traffic_intensity,
         seed=args.seed,
         reward_config=reward_config,
+        neighborhood_hops=config.gat_layers,
     )
     model = GARTActorCritic(config).to(device)
     trainer = GARTPPO(model, config)
@@ -125,6 +126,8 @@ def train(args):
             "seed": args.seed,
             "interactions": args.interactions,
             "traffic_intensity": args.traffic_intensity,
+            "observation_scope": "bounded_local",
+            "neighborhood_hops": config.gat_layers,
         },
     ), args.output)
     return args.output

@@ -67,6 +67,7 @@ Request = None
 Policy = None
 GARTActorCritic = None
 GARTConfig = None
+GARTTopologyIndex = None
 build_gart_observation = None
 load_topology_edges = None
 
@@ -75,6 +76,7 @@ if torch is not None:
         from gart.config import GARTConfig                 # noqa: E402
         from gart.model import GARTActorCritic             # noqa: E402
         from gart.observation import (                     # noqa: E402
+            GARTTopologyIndex,
             build_gart_observation,
             load_topology_edges,
         )
@@ -592,6 +594,7 @@ class GARTPathService(object):
         path = [int(src_node)]
         current = int(src_node)
         confidences = []
+        topology_index = GARTTopologyIndex(edges)
         max_hops = max(2 * len({
             endpoint
             for edge in edges
@@ -604,12 +607,13 @@ class GARTPathService(object):
         try:
             for _ in range(max_hops):
                 observation = build_gart_observation(
-                    edges,
+                    topology_index,
                     current_node=current,
                     destination_node=dst_node,
                     visited_nodes=path,
                     deadline_ms=deadline_ms,
                     max_deadline_ms=self.gart_model.config.max_deadline_ms,
+                    neighborhood_hops=self.gart_model.config.gat_layers,
                 )
                 tensors = observation.to_tensors(self.device)
                 with torch.no_grad():
