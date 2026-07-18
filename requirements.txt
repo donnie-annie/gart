@@ -1,4 +1,4 @@
-# Python runtime dependencies for the standalone DRL-OR-S Routing Suite.
+# Python runtime dependencies for the standalone GART Routing Suite.
 # Mininet and Open vSwitch are system packages and should be installed by apt.
 flask==1.1.2
 flask-cors==3.0.10

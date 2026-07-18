@@ -7,7 +7,7 @@ from server_path_service import build_topo_edges_for_path_service
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PATH_SERVICE = ROOT / "drl-or-s" / "path_service.py"
+PATH_SERVICE = ROOT / "gart" / "path_service.py"
 
 
 def load_path_service_module():
@@ -47,7 +47,7 @@ def test_controller_exports_gart_dynamic_link_features():
 
 def test_gart_mode_without_checkpoint_has_safe_dijkstra_fallback():
     module = load_path_service_module()
-    service = module.DRLPathService.__new__(module.DRLPathService)
+    service = module.GARTPathService.__new__(module.GARTPathService)
     service.model_kind = "gart"
     service.gart_model = None
     service._static_topology_edges = []

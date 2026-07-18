@@ -1,10 +1,8 @@
 """CPU-first PPO training entry point for GART.
 
-Run from ``drl-or-s``:
+Run from the repository root:
 
-    python3 -m gart.train --topology topology/Military/Topology.txt \
-        --traffic-matrix topology/Military/TM.txt \
-        --output model/GART_Military/gart.pt
+    python3 -m gart.train --dataset nsfnet
 """
 
 import argparse
@@ -20,13 +18,21 @@ from .ppo import GARTPPO
 from .rewards import DualRewardConfig
 from .rollout import GARTRolloutBuffer
 from .topology_env import TopologyRoutingEnv
+from .topologies import DEFAULT_TOPOLOGY, PAPER_TOPOLOGIES, get_paper_topology
 
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Train the paper-aligned GART policy")
-    parser.add_argument("--topology", default="topology/Military/Topology.txt")
-    parser.add_argument("--traffic-matrix", default="topology/Military/TM.txt")
-    parser.add_argument("--output", default="model/GART_Military/gart.pt")
+    parser.add_argument(
+        "--dataset", choices=tuple(PAPER_TOPOLOGIES), default=DEFAULT_TOPOLOGY,
+        help="paper evaluation topology (default: nsfnet)",
+    )
+    parser.add_argument("--topology", default=None,
+                        help="custom Topology.txt override")
+    parser.add_argument("--traffic-matrix", default=None,
+                        help="custom traffic-matrix override")
+    parser.add_argument("--output", default=None,
+                        help="checkpoint path; defaults to models/<dataset>/gart.pt")
     parser.add_argument("--interactions", type=int, default=100000,
                         help="paper evaluation budget (default: 100000)")
     parser.add_argument("--traffic-intensity", type=float, choices=(0.3, 0.7), default=0.7)
@@ -34,7 +40,12 @@ def parse_args(argv=None):
     parser.add_argument("--cuda", action="store_true",
                         help="use CUDA; the paper's reference measurements use CPU")
     parser.add_argument("--resume", default=None)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    dataset = get_paper_topology(args.dataset)
+    args.topology = args.topology or str(dataset.topology_path)
+    args.traffic_matrix = args.traffic_matrix or str(dataset.traffic_matrix_path)
+    args.output = args.output or str(dataset.default_model_path)
+    return args
 
 
 def train(args):
@@ -49,6 +60,7 @@ def train(args):
         traffic_intensity=args.traffic_intensity,
         seed=args.seed,
         reward_config=reward_config,
+        neighborhood_hops=config.gat_layers,
     )
     model = GARTActorCritic(config).to(device)
     trainer = GARTPPO(model, config)
@@ -110,9 +122,12 @@ def train(args):
     torch.save(model.checkpoint(
         optimizer=trainer.optimizer,
         extra={
+            "dataset": args.dataset,
             "seed": args.seed,
             "interactions": args.interactions,
             "traffic_intensity": args.traffic_intensity,
+            "observation_scope": "bounded_local",
+            "neighborhood_hops": config.gat_layers,
         },
     ), args.output)
     return args.output

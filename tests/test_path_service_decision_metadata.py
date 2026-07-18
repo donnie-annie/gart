@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PATH_SERVICE = ROOT / "drl-or-s" / "path_service.py"
+PATH_SERVICE = ROOT / "gart" / "path_service.py"
 
 
 def load_path_service_module():

@@ -1,8 +1,9 @@
 # GART paper alignment
 
 This package implements **GART: Decentralized Intelligent Routing with Dual
-Rewards for Mission-Critical Industrial IoT Networks** while keeping the old
-DRL-OR-S model available as a deployment fallback.
+Rewards for Mission-Critical Industrial IoT Networks**. The old implementation
+is isolated under `baseline/drl-or-s/` and is loaded only when baseline mode is
+selected explicitly.
 
 ## Paper-to-code map
 
@@ -19,18 +20,25 @@ DRL-OR-S model available as a deployment fallback.
 | PPO loss, Eqs. (12)-(15) | `ppo.py` |
 | Multi-agent/per-flow training loop, Algorithm 2 | `train.py` |
 | Dynamic topology training backend | `topology_env.py` |
-| Decentralized online next-hop execution | `../path_service.py` |
+| Decentralized online next-hop execution | `path_service.py` |
 
-The model uses two GAT layers. Each layer has four attention heads with a
-16-dimensional output per head. Actor and Critic MLPs both use hidden widths
-64/64. Embeddings are L2-normalized after every GAT layer, and invalid or
-already-visited next hops are masked before sampling.
+The model uses two GAT layers and materializes only the current agent's induced
+two-hop subgraph.  A reusable topology index keeps state construction local,
+and variable neighborhood sizes are padded only to the largest local graph in
+each PPO rollout.  Each GAT layer has four attention heads with a 16-dimensional
+output per head. Actor and Critic MLPs both use hidden widths 64/64. Embeddings
+are L2-normalized after every GAT layer, and invalid or already-visited next
+hops are masked before sampling.
 
 The global reward is attached only to the terminal transition. GAE then
 propagates its effect to earlier per-hop decisions, matching the manuscript.
 
 ## Reproduction notes
 
+- Static topology counts match the paper: NSFNet 14/42, GEANT2 23/72,
+  Renater 2010 43/112 and Synthetic-300 300/1,338 (nodes/directed links).
+- `topologies.py` is the canonical dataset catalog. `--dataset nsfnet` is the
+  default training configuration.
 - Flow classes follow Table II: EU 5%/20 ms, MU 15%/50 ms, LU 70%/100 ms,
   and RT 10%/200 ms.
 - `GARTConfig` contains every Table III value.

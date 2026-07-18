@@ -6,9 +6,8 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DRL_ROOT = ROOT / "drl-or-s"
-if str(DRL_ROOT) not in sys.path:
-    sys.path.insert(0, str(DRL_ROOT))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from gart.config import GARTConfig, PAPER_FLOW_PROFILES
 from gart.observation import build_gart_observation
@@ -89,6 +88,34 @@ class GARTPaperAlignmentTests(unittest.TestCase):
         self.assertTrue(all(
             observation.adjacency[index][index]
             for index in range(len(observation.node_ids))))
+
+    def test_two_layer_gat_materializes_only_two_hop_receptive_field(self):
+        edges = []
+        for src, dst in ((1, 2), (2, 3), (3, 4), (4, 5)):
+            for left, right in ((src, dst), (dst, src)):
+                edges.append({
+                    "src": left,
+                    "dst": right,
+                    "capacity": 100,
+                    "available_bandwidth": 80,
+                    "delay": 1,
+                    "loss": 0,
+                })
+
+        observation = build_gart_observation(
+            edges,
+            current_node=1,
+            destination_node=5,
+            visited_nodes=[1],
+            deadline_ms=20,
+            neighborhood_hops=2,
+        )
+
+        self.assertEqual(observation.node_ids, [1, 2, 3])
+        self.assertEqual(len(observation.adjacency), 3)
+        self.assertEqual(observation.action_mask, [False, True, False])
+        self.assertEqual(observation.destination_index, 4)
+        self.assertAlmostEqual(observation.flow_features[0], 1.0)
 
     def test_training_environment_uses_per_hop_dual_reward_contract(self):
         with tempfile.TemporaryDirectory() as directory:

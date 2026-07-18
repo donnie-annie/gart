@@ -1,0 +1,28 @@
+{
+  "bundled_traffic_matrix": {
+    "model": "deterministic gravity fixture",
+    "note": "Runnable repository fixture. For exact NSFNet/GEANT2 paper reproduction, replace it with a matrix extracted from the cited dataset archive.",
+    "seed": 2
+  },
+  "directed_links": 72,
+  "measurement_snapshot_reference": "https://github.com/GuetYe/DRL-M4MR/blob/77a3924832c0c4075aa3428883a27ea4b1d5eab5/mininet/topologies/topology-anonymised.xml",
+  "name": "geant2",
+  "nodes": 23,
+  "normalization": {
+    "excluded_edge": [
+      6,
+      19
+    ],
+    "reason": "The public 23-node snapshot has 37 physical links; the paper reports 36. The excluded 1.15-Mbps non-bridge edge matches the paper count.",
+    "source_physical_links": 37
+  },
+  "paper_counts": {
+    "directed_links": 72,
+    "nodes": 23
+  },
+  "paper_role": "real-world topology; convergence and static evaluation",
+  "paper_traffic_matrix": "provided with the cited GEANT2 dataset",
+  "physical_links": 36,
+  "topology_source": "https://knowledgedefinednetworking.org/data/datasets_v0/geant2.tar.gz",
+  "traffic_matrix_entries": 529
+}

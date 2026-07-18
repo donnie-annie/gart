@@ -7,3 +7,6 @@ __pycache__/
 .venv/
 venv/
 env/
+.idea/
+.vscode/
+models/*/gart.pt

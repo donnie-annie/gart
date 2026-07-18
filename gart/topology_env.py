@@ -9,7 +9,11 @@ import copy
 import random
 
 from .config import PAPER_FLOW_PROFILES
-from .observation import build_gart_observation, load_topology_edges
+from .observation import (
+    GARTTopologyIndex,
+    build_gart_observation,
+    load_topology_edges,
+)
 from .rewards import DualReward, DualRewardConfig
 
 
@@ -17,7 +21,7 @@ class TopologyRoutingEnv:
     def __init__(self, topology_path, traffic_matrix_path=None,
                  traffic_intensity=0.7, delay_scale=0.01,
                  link_change_probability=0.02,
-                 seed=1, reward_config=None):
+                 seed=1, reward_config=None, neighborhood_hops=2):
         self.random = random.Random(seed)
         self.base_edges = load_topology_edges(topology_path)
         self.node_ids = sorted({
@@ -28,6 +32,7 @@ class TopologyRoutingEnv:
         self.traffic_intensity = max(0.0, min(float(traffic_intensity), 0.95))
         self.delay_scale = float(delay_scale)
         self.link_change_probability = max(0.0, min(float(link_change_probability), 1.0))
+        self.neighborhood_hops = max(int(neighborhood_hops), 1)
         self.reward = DualReward(reward_config or DualRewardConfig())
         self.traffic_pairs = self._load_traffic_pairs(traffic_matrix_path)
         self.max_hops = max(2 * len(self.node_ids), 1)
@@ -78,6 +83,7 @@ class TopologyRoutingEnv:
             utilization = self.traffic_intensity * self.random.uniform(0.5, 1.0)
             edge["available_bandwidth"] = edge["capacity"] * (1.0 - utilization)
             edge["enabled"] = True
+        self.topology_index = GARTTopologyIndex(self.edges)
 
     def reset(self):
         self._reset_link_state()
@@ -97,11 +103,12 @@ class TopologyRoutingEnv:
 
     def _observation(self):
         self.current_observation = build_gart_observation(
-            self.edges,
+            self.topology_index,
             current_node=self.current,
             destination_node=self.destination,
             visited_nodes=self.visited,
             deadline_ms=self.deadline_ms,
+            neighborhood_hops=self.neighborhood_hops,
         )
         return self.current_observation
 

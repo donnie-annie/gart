@@ -79,12 +79,46 @@ class GARTRolloutBuffer:
     def tensors(self, device):
         if self.returns is None or self.advantages is None:
             raise RuntimeError("compute_returns_and_advantages must be called first")
+
+        # Each agent decision uses a bounded local subgraph, whose node count
+        # varies with the current node degree.  Pad only to the largest local
+        # neighborhood in this rollout so PPO can still form dense batches
+        # without restoring a topology-wide N x N tensor.
+        max_nodes = max(item.size(0) for item in self.node_features)
+
+        def pad_features(item):
+            padded = torch.zeros(
+                max_nodes, item.size(1), dtype=item.dtype)
+            padded[:item.size(0)] = item
+            return padded
+
+        def pad_adjacency(item):
+            padded = torch.zeros(
+                max_nodes, max_nodes, dtype=item.dtype)
+            size = item.size(0)
+            padded[:size, :size] = item
+            # Isolate padded nodes so their rows have a valid softmax domain.
+            for index in range(size, max_nodes):
+                padded[index, index] = True
+            return padded
+
+        def pad_action_mask(item):
+            padded = torch.zeros(max_nodes, dtype=item.dtype)
+            padded[:item.size(0)] = item
+            return padded
+
         return {
-            "node_features": torch.stack(self.node_features).to(device),
-            "adjacency": torch.stack(self.adjacencies).to(device),
+            "node_features": torch.stack([
+                pad_features(item) for item in self.node_features
+            ]).to(device),
+            "adjacency": torch.stack([
+                pad_adjacency(item) for item in self.adjacencies
+            ]).to(device),
             "current_node": torch.stack(self.current_nodes).long().to(device),
             "flow_features": torch.stack(self.flow_features).to(device),
-            "action_mask": torch.stack(self.action_masks).bool().to(device),
+            "action_mask": torch.stack([
+                pad_action_mask(item) for item in self.action_masks
+            ]).bool().to(device),
             "actions": torch.stack(self.actions).long().to(device),
             "old_log_probabilities": torch.stack(self.log_probabilities).to(device),
             "old_values": torch.stack(self.values).to(device),

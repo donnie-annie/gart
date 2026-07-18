@@ -20,4 +20,4 @@ if [ -d logs ]; then
   done
 fi
 
-echo "DRL-OR-S Routing Suite stopped"
+echo "GART Routing Suite stopped"

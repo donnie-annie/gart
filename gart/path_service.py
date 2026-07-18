@@ -1,13 +1,11 @@
-"""
-path_service_v2.py - 修复版本的路径计算服务
-主要修复：
-  1. 通过环境变量强制 NetEnv 不连接 Mininet socket
-  2. DRL 模型范围外的节点自动回退 Dijkstra（基于控制器传来的拓扑边）
-  3. 保留独立 TCP 服务进程架构
+"""GART routing service with an optional legacy baseline adapter.
 
-使用方法：
-    export SKIP_MININET_CONNECT=1
-    python3 path_service_v2.py --topo Abi --port 8889 --model ./model/...
+Run the primary implementation from the repository root with::
+
+    python3 -m gart.path_service --topo nsfnet --port 8889
+
+The historical DRL-OR-S runtime is imported only when ``--algorithm baseline``
+is selected. Missing models always fall back to topology-aware Dijkstra.
 """
 
 import argparse
@@ -37,26 +35,39 @@ else:
     TORCH_GEOMETRIC_IMPORT_ERROR = None
 
 SERVICE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SERVICE_DIR)
+BASELINE_DIR = os.path.join(PROJECT_ROOT, "baseline", "drl-or-s")
+TOPOLOGY_ROOT = os.path.join(PROJECT_ROOT, "topology")
+DEFAULT_GART_MODEL = os.path.join(
+    PROJECT_ROOT, "models", "nsfnet", "gart.pt")
+DEFAULT_BASELINE_MODEL = os.path.join(
+    BASELINE_DIR, "model", "Military_mininet")
 
 # 设置环境变量，告诉 NetEnv 不要连接 Mininet
 os.environ['SKIP_MININET_CONNECT'] = '1'
 
-# 确保可以导入本目录下的模块
-sys.path.insert(0, SERVICE_DIR)
+# Import the primary package from the project root. The baseline path is kept
+# separate and is used only by the guarded compatibility imports below.
+sys.path.insert(0, PROJECT_ROOT)
+sys.path.insert(0, BASELINE_DIR)
 
 
-def _resolve_service_path(path):
+def _resolve_service_path(path, algorithm="gart", topo_name="nsfnet"):
     if not path:
-        return os.path.join(SERVICE_DIR, "model", "Military_mininet")
+        if algorithm in {"baseline", "drl-or-s"}:
+            return DEFAULT_BASELINE_MODEL
+        return os.path.join(
+            PROJECT_ROOT, "models", str(topo_name).lower(), "gart.pt")
     if os.path.isabs(path):
         return path
-    return os.path.join(SERVICE_DIR, path)
+    return os.path.join(PROJECT_ROOT, path)
 
 NetEnv = None
 Request = None
 Policy = None
 GARTActorCritic = None
 GARTConfig = None
+GARTTopologyIndex = None
 build_gart_observation = None
 load_topology_edges = None
 
@@ -65,6 +76,7 @@ if torch is not None:
         from gart.config import GARTConfig                 # noqa: E402
         from gart.model import GARTActorCritic             # noqa: E402
         from gart.observation import (                     # noqa: E402
+            GARTTopologyIndex,
             build_gart_observation,
             load_topology_edges,
         )
@@ -215,7 +227,7 @@ def _decision(decision_source, path, model_used=False, fallback_reason=None, con
     }
 
 
-class DRLPathService(object):
+class GARTPathService(object):
     """
     路径计算服务（独立 TCP 进程）
     - DRL 范围内的节点：使用训练好的 DRL 模型计算路径
@@ -223,14 +235,19 @@ class DRLPathService(object):
     - 混合场景（路径跨越 DRL 范围内外）：整体走 Dijkstra
     """
 
-    def __init__(self, topo_name="Military", port=8889, model_path=None,
-                 algorithm="auto"):
+    def __init__(self, topo_name="nsfnet", port=8889, model_path=None,
+                 algorithm="gart"):
         self.port = port
         self.topo_name = topo_name
-        self.model_path = _resolve_service_path(model_path)
         self.algorithm_requested = (algorithm or "auto").strip().lower()
-        if self.algorithm_requested not in {"auto", "gart", "drl-or-s"}:
-            raise ValueError("algorithm must be one of: auto, gart, drl-or-s")
+        if self.algorithm_requested not in {
+                "auto", "gart", "baseline", "drl-or-s"}:
+            raise ValueError(
+                "algorithm must be one of: auto, gart, baseline, drl-or-s")
+        if self.algorithm_requested == "drl-or-s":
+            self.algorithm_requested = "baseline"
+        self.model_path = _resolve_service_path(
+            model_path, self.algorithm_requested, topo_name)
 
         print("[初始化] 拓扑: %s, 端口: %d, 算法: %s"
               % (topo_name, port, self.algorithm_requested))
@@ -254,7 +271,7 @@ class DRLPathService(object):
         self._static_topology_edges = []
 
         topology_file = os.path.join(
-            SERVICE_DIR, "topology", topo_name, "Topology.txt")
+            TOPOLOGY_ROOT, topo_name, "Topology.txt")
         if load_topology_edges is not None and os.path.exists(topology_file):
             self._static_topology_edges = load_topology_edges(topology_file)
             node_ids = {
@@ -264,8 +281,9 @@ class DRLPathService(object):
             }
             self.num_node = len(node_ids)
 
-        # Keep the legacy NetEnv available for old checkpoints and fallback.
-        if NetEnv is not None and Policy is not None and Data is not None:
+        # The legacy NetEnv belongs only to explicit baseline runs.
+        if (self.algorithm_requested == "baseline" and NetEnv is not None
+                and Policy is not None and Data is not None):
             print("[初始化] 正在创建兼容 NetEnv...")
             args = argparse.Namespace()
             args.use_mininet = False
@@ -310,10 +328,10 @@ class DRLPathService(object):
 
         if self.algorithm_requested == "gart":
             self.model_kind = "gart"
-        elif self.algorithm_requested == "drl-or-s":
-            self.model_kind = "drl-or-s"
+        elif self.algorithm_requested == "baseline":
+            self.model_kind = "baseline"
         else:
-            self.model_kind = "gart" if gart_checkpoint else "drl-or-s"
+            self.model_kind = "gart"
 
         # Load the new paper-aligned checkpoint when requested or auto-detected.
         if self.model_kind == "gart":
@@ -332,8 +350,9 @@ class DRLPathService(object):
                     print("[模型] GART 加载失败: %s" % exc)
                     self.gart_model = None
 
-        # Legacy DRL-OR-S checkpoint support for existing deployments.
-        elif self.model_path and self.env is not None and Policy is not None:
+        # Legacy DRL-OR-S checkpoints are isolated behind baseline mode.
+        elif (self.model_kind == "baseline" and self.model_path
+              and self.env is not None and Policy is not None):
             print("[模型] 正在加载模型: %s" % self.model_path)
             try:
                 self.actor_critic = Policy(
@@ -354,7 +373,7 @@ class DRLPathService(object):
                 print("[模型] 将使用最短路径算法")
                 self.actor_critic = None
         else:
-            print("[模型] 旧 DRL-OR-S 运行时或模型不可用，将回退 Dijkstra")
+            print("[模型] baseline 运行时或模型不可用，将回退 Dijkstra")
 
         print("[初始化] 完成！拓扑: %s, 节点数: %d, Agent数: %d, 模型: %s"
               % (topo_name, self.num_node, self.num_agent, self.model_kind))
@@ -575,6 +594,7 @@ class DRLPathService(object):
         path = [int(src_node)]
         current = int(src_node)
         confidences = []
+        topology_index = GARTTopologyIndex(edges)
         max_hops = max(2 * len({
             endpoint
             for edge in edges
@@ -587,12 +607,13 @@ class DRLPathService(object):
         try:
             for _ in range(max_hops):
                 observation = build_gart_observation(
-                    edges,
+                    topology_index,
                     current_node=current,
                     destination_node=dst_node,
                     visited_nodes=path,
                     deadline_ms=deadline_ms,
                     max_deadline_ms=self.gart_model.config.max_deadline_ms,
+                    neighborhood_hops=self.gart_model.config.gat_layers,
                 )
                 tensors = observation.to_tensors(self.device)
                 with torch.no_grad():
@@ -740,7 +761,7 @@ class DRLPathService(object):
         print("[服务] 已启动，监听端口 %d" % self.port)
         print("[服务] 等待控制器的路径计算请求...")
         print("[服务] 当前模型: %s" % self.model_kind)
-        if self.model_kind == "drl-or-s":
+        if self.model_kind == "baseline":
             print("[服务] DRL 节点范围: 1 ~ %d (0-based: 0 ~ %d)" % (self.num_node, self.num_node - 1))
             print("[服务] 超出范围的节点将使用 Dijkstra 回退（需控制器传入 topo_edges）")
         else:
@@ -878,28 +899,32 @@ class DRLPathService(object):
                 traceback.print_exc()
 
 
+DRLPathService = GARTPathService
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="DRL 路径计算服务 v2")
-    parser.add_argument("--topo", default="Military", help="拓扑名称")
+    parser = argparse.ArgumentParser(description="GART 路径计算服务")
+    parser.add_argument("--topo", default="nsfnet", help="拓扑名称")
     parser.add_argument("--port", type=int, default=8889, help="监听端口")
     parser.add_argument(
         "--model",
         default=None,
-        help="DRL 模型路径。相对路径按 drl-or-s 目录解析，默认使用 ./model/Military_mininet",
+        help=("模型或 checkpoint 路径。相对路径按项目根目录解析；"
+              "GART 默认使用 models/nsfnet/gart.pt"),
     )
     parser.add_argument(
         "--algorithm",
-        choices=("auto", "gart", "drl-or-s"),
-        default="auto",
-        help="路由模型；auto 优先识别 model 路径中的 gart.pt",
+        choices=("auto", "gart", "baseline", "drl-or-s"),
+        default="gart",
+        help="路由模型；drl-or-s 是 baseline 的兼容别名",
     )
     args = parser.parse_args()
 
     print("=" * 60)
-    print("DRL 路径计算服务 v2")
+    print("GART 路径计算服务")
     print("=" * 60)
 
-    service = DRLPathService(args.topo, args.port, args.model, args.algorithm)
+    service = GARTPathService(args.topo, args.port, args.model, args.algorithm)
     try:
         service.run()
     except KeyboardInterrupt:
